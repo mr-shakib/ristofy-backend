@@ -7,12 +7,22 @@ from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .audit import log_activity
-from .models import UserPinCredential, UserSession
+from .models import ActivityLog, UserPinCredential, UserSession
 from .permissions import IsOwnerOrManager
-from .serializers import LoginSerializer, PinLoginSerializer, SetUserPinSerializer, UserCreateSerializer, UserSerializer
+from .serializers import (
+    ActivityLogSerializer,
+    LoginSerializer,
+    LogoutSerializer,
+    MeUpdateSerializer,
+    PinLoginSerializer,
+    SetUserPinSerializer,
+    UserCreateSerializer,
+    UserSerializer,
+)
 
 User = get_user_model()
 
@@ -99,6 +109,73 @@ class PinLoginView(APIView):
             branch=user.branch,
         )
         return Response({"tokens": tokens, "user": UserSerializer(user).data})
+
+
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = LogoutSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            refresh = RefreshToken(serializer.validated_data["refresh"])
+            if int(refresh["user_id"]) != request.user.id:
+                raise PermissionDenied("You can only logout your own session.")
+            jti = str(refresh["jti"])
+            refresh.blacklist()
+        except TokenError:
+            return Response({"detail": "Invalid refresh token."}, status=status.HTTP_400_BAD_REQUEST)
+
+        UserSession.objects.filter(
+            user=request.user,
+            refresh_jti=jti,
+            revoked_at__isnull=True,
+        ).update(revoked_at=timezone.now())
+
+        log_activity(
+            actor_user=request.user,
+            action="auth_logout",
+            entity_type="user",
+            entity_id=str(request.user.id),
+            tenant=request.user.tenant,
+            branch=request.user.branch,
+        )
+        return Response({"detail": "Logged out successfully."}, status=status.HTTP_200_OK)
+
+
+class MeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+    def patch(self, request):
+        serializer = MeUpdateSerializer(instance=request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        log_activity(
+            actor_user=request.user,
+            action="profile_updated",
+            entity_type="user",
+            entity_id=str(request.user.id),
+            tenant=request.user.tenant,
+            branch=request.user.branch,
+        )
+        return Response(UserSerializer(request.user).data)
+
+
+class ActivityLogListView(generics.ListAPIView):
+    serializer_class = ActivityLogSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def get_queryset(self):
+        queryset = ActivityLog.objects.filter(tenant=self.request.user.tenant).select_related("actor_user", "branch")
+        limit = self.request.query_params.get("limit")
+        if limit and limit.isdigit():
+            return queryset[: int(limit)]
+        return queryset[:100]
 
 
 class UserListCreateView(generics.ListCreateAPIView):
