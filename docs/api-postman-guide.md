@@ -866,6 +866,74 @@ Example 400:
 }
 ```
 
+## 3.18 Reservation Status Actions
+
+- Method: POST
+- URL: {{base_url}}/reservations/{{reservation_id}}/arrived
+- Auth: Yes (OWNER or MANAGER)
+
+Success response (200):
+
+```json
+{
+  "id": 1,
+  "branch": 20,
+  "table": 1,
+  "customer_name": "Mario Rossi",
+  "customer_phone": "+390000000",
+  "party_size": 2,
+  "reserved_for": "2026-04-08T20:30:00Z",
+  "status": "ARRIVED",
+  "notes": "Window seat",
+  "created_at": "2026-04-08T10:33:15.110000Z",
+  "updated_at": "2026-04-08T10:36:00.000000Z"
+}
+```
+
+- Method: POST
+- URL: {{base_url}}/reservations/{{reservation_id}}/cancel
+- Auth: Yes (OWNER or MANAGER)
+
+Success response (200): same shape as reservation response with `status: "CANCELED"`.
+
+## 3.19 Filtering and Pagination (Phase 2 Lists)
+
+These list endpoints are paginated:
+
+- GET {{base_url}}/menu/categories
+- GET {{base_url}}/menu/items
+- GET {{base_url}}/floor-plans
+- GET {{base_url}}/tables
+- GET {{base_url}}/reservations
+
+Pagination query params:
+
+- page (default 1)
+- page_size (max 100)
+
+Paginated response shape:
+
+```json
+{
+  "count": 12,
+  "next": "http://127.0.0.1:8000/api/v1/menu/items?page=2&page_size=5",
+  "previous": null,
+  "results": [
+    {
+      "id": 1
+    }
+  ]
+}
+```
+
+Supported filters:
+
+- Menu categories: `branch`, `is_active`, `q`
+- Menu items: `branch`, `category`, `is_active`, `min_price`, `max_price`, `q`
+- Floor plans: `branch`, `is_active`, `q`
+- Tables: `branch`, `floor_plan`, `state`, `q`
+- Reservations: `branch`, `table`, `status`, `reserved_from`, `reserved_to`, `q`
+
 ## 4. Postman Tests Script Snippets
 
 Add this to login and register requests Tests tab to store tokens:

@@ -7,6 +7,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from tenants.models import Branch, Tenant
+from tables.models import DiningTable
 
 User = get_user_model()
 
@@ -151,3 +152,108 @@ class TablesApiTests(APITestCase):
         )
         self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("reserved_for", second.data)
+
+    def test_reservation_arrived_and_cancel_actions_update_table_state(self):
+        self._auth()
+        floor_res = self.client.post(
+            "/api/v1/floor-plans",
+            {"branch": self.branch.id, "name": "Main Hall", "layout_json": {}},
+            format="json",
+        )
+        table_res = self.client.post(
+            "/api/v1/tables",
+            {
+                "branch": self.branch.id,
+                "floor_plan": floor_res.data["id"],
+                "code": "T2",
+                "seats": 4,
+                "state": "FREE",
+                "x": 1,
+                "y": 1,
+            },
+            format="json",
+        )
+
+        reservation = self.client.post(
+            "/api/v1/reservations",
+            {
+                "branch": self.branch.id,
+                "table": table_res.data["id"],
+                "customer_name": "Alice",
+                "party_size": 2,
+                "reserved_for": (timezone.now() + timedelta(hours=3)).isoformat(),
+                "status": "CONFIRMED",
+            },
+            format="json",
+        )
+        self.assertEqual(reservation.status_code, status.HTTP_201_CREATED)
+
+        table = DiningTable.objects.get(id=table_res.data["id"])
+        self.assertEqual(table.state, DiningTable.State.RESERVED)
+
+        arrived = self.client.post(f"/api/v1/reservations/{reservation.data['id']}/arrived", {}, format="json")
+        self.assertEqual(arrived.status_code, status.HTTP_200_OK)
+        table.refresh_from_db()
+        self.assertEqual(table.state, DiningTable.State.OCCUPIED)
+
+        cancel = self.client.post(f"/api/v1/reservations/{reservation.data['id']}/cancel", {}, format="json")
+        self.assertEqual(cancel.status_code, status.HTTP_200_OK)
+        table.refresh_from_db()
+        self.assertEqual(table.state, DiningTable.State.FREE)
+
+    def test_tables_and_reservations_filtering_and_pagination(self):
+        self._auth()
+        floor_res = self.client.post(
+            "/api/v1/floor-plans",
+            {"branch": self.branch.id, "name": "Patio", "layout_json": {}, "is_active": True},
+            format="json",
+        )
+        t1 = self.client.post(
+            "/api/v1/tables",
+            {
+                "branch": self.branch.id,
+                "floor_plan": floor_res.data["id"],
+                "code": "A1",
+                "seats": 2,
+                "state": "FREE",
+                "x": 0,
+                "y": 0,
+            },
+            format="json",
+        ).data
+        self.client.post(
+            "/api/v1/tables",
+            {
+                "branch": self.branch.id,
+                "floor_plan": floor_res.data["id"],
+                "code": "B2",
+                "seats": 4,
+                "state": "RESERVED",
+                "x": 5,
+                "y": 5,
+            },
+            format="json",
+        )
+
+        self.client.post(
+            "/api/v1/reservations",
+            {
+                "branch": self.branch.id,
+                "table": t1["id"],
+                "customer_name": "Mario",
+                "party_size": 2,
+                "reserved_for": (timezone.now() + timedelta(hours=1)).isoformat(),
+                "status": "PENDING",
+            },
+            format="json",
+        )
+
+        tables_res = self.client.get("/api/v1/tables?state=FREE&page_size=1")
+        self.assertEqual(tables_res.status_code, status.HTTP_200_OK)
+        self.assertIn("results", tables_res.data)
+        self.assertEqual(tables_res.data["count"], 1)
+
+        reservation_res = self.client.get("/api/v1/reservations?status=PENDING&page_size=1")
+        self.assertEqual(reservation_res.status_code, status.HTTP_200_OK)
+        self.assertIn("results", reservation_res.data)
+        self.assertEqual(reservation_res.data["count"], 1)

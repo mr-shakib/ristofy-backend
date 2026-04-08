@@ -66,3 +66,53 @@ class MenuApiTests(APITestCase):
 
         delete_res = self.client.delete(f"/api/v1/menu/categories/{cat_res.data['id']}")
         self.assertEqual(delete_res.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_menu_list_filters_and_pagination(self):
+        self._auth()
+        cat_a = self.client.post(
+            "/api/v1/menu/categories",
+            {"branch": self.branch.id, "name": "Pizza", "sort_order": 1, "is_active": True},
+            format="json",
+        ).data
+        cat_b = self.client.post(
+            "/api/v1/menu/categories",
+            {"branch": self.branch.id, "name": "Dessert", "sort_order": 2, "is_active": False},
+            format="json",
+        ).data
+
+        self.client.post(
+            "/api/v1/menu/items",
+            {
+                "branch": self.branch.id,
+                "category": cat_a["id"],
+                "name": "Margherita",
+                "description": "Classic",
+                "base_price": "10.00",
+                "vat_rate": "10.00",
+                "is_active": True,
+            },
+            format="json",
+        )
+        self.client.post(
+            "/api/v1/menu/items",
+            {
+                "branch": self.branch.id,
+                "category": cat_b["id"],
+                "name": "Tiramisu",
+                "description": "Sweet",
+                "base_price": "6.00",
+                "vat_rate": "10.00",
+                "is_active": False,
+            },
+            format="json",
+        )
+
+        res_categories = self.client.get("/api/v1/menu/categories?is_active=true&page_size=1")
+        self.assertEqual(res_categories.status_code, status.HTTP_200_OK)
+        self.assertIn("results", res_categories.data)
+        self.assertEqual(res_categories.data["count"], 1)
+
+        res_items = self.client.get("/api/v1/menu/items?q=mar&page_size=1")
+        self.assertEqual(res_items.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_items.data["count"], 1)
+        self.assertEqual(res_items.data["results"][0]["name"], "Margherita")

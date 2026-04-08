@@ -5,6 +5,8 @@ from .views import (
     DiningTableListCreateView,
     FloorPlanDetailView,
     FloorPlanListCreateView,
+    ReservationArrivedView,
+    ReservationCancelView,
     ReservationDetailView,
     ReservationListCreateView,
 )
@@ -16,4 +18,6 @@ urlpatterns = [
     path("tables/<int:pk>", DiningTableDetailView.as_view(), name="tables-detail"),
     path("reservations", ReservationListCreateView.as_view(), name="reservations-list-create"),
     path("reservations/<int:pk>", ReservationDetailView.as_view(), name="reservations-detail"),
+    path("reservations/<int:pk>/arrived", ReservationArrivedView.as_view(), name="reservations-arrived"),
+    path("reservations/<int:pk>/cancel", ReservationCancelView.as_view(), name="reservations-cancel"),
 ]
