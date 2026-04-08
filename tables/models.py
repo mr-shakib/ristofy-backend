@@ -84,3 +84,35 @@ class Reservation(models.Model):
     def __str__(self):
         return f"{self.customer_name} - {self.reserved_for}"
 
+
+class WaitlistEntry(models.Model):
+    class Status(models.TextChoices):
+        WAITING = "WAITING", "Waiting"
+        CALLED = "CALLED", "Called"
+        SEATED = "SEATED", "Seated"
+        CANCELED = "CANCELED", "Canceled"
+
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="waitlist_entries")
+    table = models.ForeignKey(
+        DiningTable,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="waitlist_entries",
+    )
+    customer_name = models.CharField(max_length=160)
+    customer_phone = models.CharField(max_length=40, blank=True)
+    party_size = models.PositiveSmallIntegerField(default=2)
+    quoted_wait_minutes = models.PositiveSmallIntegerField(default=15)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.WAITING)
+    notes = models.TextField(blank=True)
+    seated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.customer_name} ({self.status})"
+

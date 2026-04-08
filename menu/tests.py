@@ -116,3 +116,59 @@ class MenuApiTests(APITestCase):
         self.assertEqual(res_items.status_code, status.HTTP_200_OK)
         self.assertEqual(res_items.data["count"], 1)
         self.assertEqual(res_items.data["results"][0]["name"], "Margherita")
+
+    def test_menu_allergens_and_schedule_endpoints(self):
+        self._auth()
+
+        allergen_res = self.client.post(
+            "/api/v1/menu/allergens",
+            {
+                "code": "GLUTEN",
+                "name_it": "Glutine",
+                "name_en": "Gluten",
+                "name_de": "Gluten",
+                "name_fr": "Gluten",
+            },
+            format="json",
+        )
+        self.assertEqual(allergen_res.status_code, status.HTTP_201_CREATED)
+
+        category = self.client.post(
+            "/api/v1/menu/categories",
+            {"branch": self.branch.id, "name": "Pasta", "sort_order": 1},
+            format="json",
+        ).data
+
+        item_res = self.client.post(
+            "/api/v1/menu/items",
+            {
+                "branch": self.branch.id,
+                "category": category["id"],
+                "name": "Spaghetti",
+                "description": "Classic",
+                "base_price": "12.00",
+                "vat_rate": "10.00",
+                "allergens": [allergen_res.data["id"]],
+            },
+            format="json",
+        )
+        self.assertEqual(item_res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(item_res.data["allergens"], [allergen_res.data["id"]])
+
+        schedule_res = self.client.post(
+            "/api/v1/menu/schedules",
+            {
+                "branch": self.branch.id,
+                "menu_item": item_res.data["id"],
+                "day_of_week": 5,
+                "start_time": "18:00:00",
+                "end_time": "22:00:00",
+                "is_active": True,
+            },
+            format="json",
+        )
+        self.assertEqual(schedule_res.status_code, status.HTTP_201_CREATED)
+
+        list_res = self.client.get(f"/api/v1/menu/schedules?menu_item={item_res.data['id']}&day_of_week=5")
+        self.assertEqual(list_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(list_res.data["count"], 1)

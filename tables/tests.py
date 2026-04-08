@@ -257,3 +257,61 @@ class TablesApiTests(APITestCase):
         self.assertEqual(reservation_res.status_code, status.HTTP_200_OK)
         self.assertIn("results", reservation_res.data)
         self.assertEqual(reservation_res.data["count"], 1)
+
+    def test_waitlist_lifecycle_and_table_state_sync(self):
+        self._auth()
+        floor_res = self.client.post(
+            "/api/v1/floor-plans",
+            {"branch": self.branch.id, "name": "Wait Hall", "layout_json": {}},
+            format="json",
+        )
+        table_res = self.client.post(
+            "/api/v1/tables",
+            {
+                "branch": self.branch.id,
+                "floor_plan": floor_res.data["id"],
+                "code": "W1",
+                "seats": 4,
+                "state": "FREE",
+                "x": 2,
+                "y": 2,
+            },
+            format="json",
+        )
+
+        waitlist_res = self.client.post(
+            "/api/v1/waitlist",
+            {
+                "branch": self.branch.id,
+                "table": table_res.data["id"],
+                "customer_name": "Wait Guest",
+                "customer_phone": "+390000999",
+                "party_size": 3,
+                "quoted_wait_minutes": 20,
+                "status": "WAITING",
+            },
+            format="json",
+        )
+        self.assertEqual(waitlist_res.status_code, status.HTTP_201_CREATED)
+
+        called = self.client.post(f"/api/v1/waitlist/{waitlist_res.data['id']}/call", {}, format="json")
+        self.assertEqual(called.status_code, status.HTTP_200_OK)
+        self.assertEqual(called.data["status"], "CALLED")
+
+        seated = self.client.post(f"/api/v1/waitlist/{waitlist_res.data['id']}/seat", {}, format="json")
+        self.assertEqual(seated.status_code, status.HTTP_200_OK)
+        self.assertEqual(seated.data["status"], "SEATED")
+
+        table = DiningTable.objects.get(id=table_res.data["id"])
+        self.assertEqual(table.state, DiningTable.State.OCCUPIED)
+
+        canceled = self.client.post(f"/api/v1/waitlist/{waitlist_res.data['id']}/cancel", {}, format="json")
+        self.assertEqual(canceled.status_code, status.HTTP_200_OK)
+        self.assertEqual(canceled.data["status"], "CANCELED")
+
+        table.refresh_from_db()
+        self.assertEqual(table.state, DiningTable.State.FREE)
+
+        list_res = self.client.get("/api/v1/waitlist?status=CANCELED&page_size=1")
+        self.assertEqual(list_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(list_res.data["count"], 1)

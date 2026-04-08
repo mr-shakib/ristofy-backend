@@ -27,6 +27,9 @@ Create an environment named RMS Local with these variables:
 - floor_plan_id =
 - table_id =
 - reservation_id =
+- allergen_id =
+- schedule_id =
+- waitlist_id =
 
 ### 1.2 Common Headers
 
@@ -68,6 +71,10 @@ Run requests in this order:
 15. Create floor plan
 16. Create table
 17. Create reservation
+18. Create allergen and attach to menu item
+19. Create menu schedule window
+20. Create waitlist entry
+21. Call and seat waitlist entry
 
 ## 3. Endpoint Documentation
 
@@ -900,11 +907,14 @@ Success response (200): same shape as reservation response with `status: "CANCEL
 
 These list endpoints are paginated:
 
+- GET {{base_url}}/menu/allergens
 - GET {{base_url}}/menu/categories
 - GET {{base_url}}/menu/items
+- GET {{base_url}}/menu/schedules
 - GET {{base_url}}/floor-plans
 - GET {{base_url}}/tables
 - GET {{base_url}}/reservations
+- GET {{base_url}}/waitlist
 
 Pagination query params:
 
@@ -928,11 +938,155 @@ Paginated response shape:
 
 Supported filters:
 
+- Menu allergens: `q`
 - Menu categories: `branch`, `is_active`, `q`
 - Menu items: `branch`, `category`, `is_active`, `min_price`, `max_price`, `q`
+- Menu schedules: `branch`, `menu_item`, `day_of_week`, `is_active`
 - Floor plans: `branch`, `is_active`, `q`
 - Tables: `branch`, `floor_plan`, `state`, `q`
 - Reservations: `branch`, `table`, `status`, `reserved_from`, `reserved_to`, `q`
+- Waitlist: `branch`, `table`, `status`, `q`
+
+## 3.20 Allergens and Item Mapping
+
+- Method: POST
+- URL: {{base_url}}/menu/allergens
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "code": "GLUTEN",
+  "name_it": "Glutine",
+  "name_en": "Gluten",
+  "name_de": "Gluten",
+  "name_fr": "Gluten"
+}
+```
+
+Success response (201):
+
+```json
+{
+  "id": 1,
+  "code": "GLUTEN",
+  "name_it": "Glutine",
+  "name_en": "Gluten",
+  "name_de": "Gluten",
+  "name_fr": "Gluten",
+  "created_at": "2026-04-08T12:01:10.000000Z",
+  "updated_at": "2026-04-08T12:01:10.000000Z"
+}
+```
+
+Attach allergens to item on create/update:
+
+- Method: POST
+- URL: {{base_url}}/menu/items
+
+```json
+{
+  "branch": 20,
+  "category": 12,
+  "name": "Spaghetti",
+  "description": "Classic",
+  "base_price": "12.00",
+  "vat_rate": "10.00",
+  "allergens": [1]
+}
+```
+
+## 3.21 Menu Schedule Windows
+
+- Method: POST
+- URL: {{base_url}}/menu/schedules
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "menu_item": 33,
+  "day_of_week": 5,
+  "start_time": "18:00:00",
+  "end_time": "22:00:00",
+  "is_active": true
+}
+```
+
+Success response (201):
+
+```json
+{
+  "id": 9,
+  "tenant": 10,
+  "branch": 20,
+  "menu_item": 33,
+  "day_of_week": 5,
+  "start_time": "18:00:00",
+  "end_time": "22:00:00",
+  "is_active": true,
+  "created_at": "2026-04-08T12:02:50.000000Z",
+  "updated_at": "2026-04-08T12:02:50.000000Z"
+}
+```
+
+Common error:
+
+- 400 when end_time is not after start_time
+
+## 3.22 Waitlist Basics
+
+- Method: POST
+- URL: {{base_url}}/waitlist
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "table": 5,
+  "customer_name": "Walk In Guest",
+  "customer_phone": "+39000111222",
+  "party_size": 3,
+  "quoted_wait_minutes": 20,
+  "status": "WAITING",
+  "notes": "Prefers patio"
+}
+```
+
+Success response (201):
+
+```json
+{
+  "id": 4,
+  "branch": 20,
+  "table": 5,
+  "customer_name": "Walk In Guest",
+  "customer_phone": "+39000111222",
+  "party_size": 3,
+  "quoted_wait_minutes": 20,
+  "status": "WAITING",
+  "notes": "Prefers patio",
+  "seated_at": null,
+  "created_at": "2026-04-08T12:05:20.000000Z",
+  "updated_at": "2026-04-08T12:05:20.000000Z"
+}
+```
+
+Status actions:
+
+- POST {{base_url}}/waitlist/{{waitlist_id}}/call
+- POST {{base_url}}/waitlist/{{waitlist_id}}/seat
+- POST {{base_url}}/waitlist/{{waitlist_id}}/cancel
+
+Common errors:
+
+- 400 when trying to seat without assigning a table
+- 400 when trying to call/seat a canceled waitlist entry
 
 ## 4. Postman Tests Script Snippets
 
@@ -956,6 +1110,12 @@ if (json.id && pm.request.url.toString().includes('/menu/categories')) {
 if (json.id && pm.request.url.toString().includes('/menu/items')) {
   pm.environment.set("item_id", json.id);
 }
+if (json.id && pm.request.url.toString().includes('/menu/allergens')) {
+  pm.environment.set("allergen_id", json.id);
+}
+if (json.id && pm.request.url.toString().includes('/menu/schedules')) {
+  pm.environment.set("schedule_id", json.id);
+}
 if (json.id && pm.request.url.toString().includes('/floor-plans')) {
   pm.environment.set("floor_plan_id", json.id);
 }
@@ -964,6 +1124,9 @@ if (json.id && pm.request.url.toString().includes('/tables')) {
 }
 if (json.id && pm.request.url.toString().includes('/reservations')) {
   pm.environment.set("reservation_id", json.id);
+}
+if (json.id && pm.request.url.toString().includes('/waitlist')) {
+  pm.environment.set("waitlist_id", json.id);
 }
 ```
 

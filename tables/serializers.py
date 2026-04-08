@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import DiningTable, FloorPlan, Reservation
+from .models import DiningTable, FloorPlan, Reservation, WaitlistEntry
 
 
 class FloorPlanSerializer(serializers.ModelSerializer):
@@ -99,5 +99,39 @@ class ReservationSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"reserved_for": "This table is already reserved for the selected time slot."}
                 )
+
+        return attrs
+
+
+class WaitlistEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WaitlistEntry
+        fields = [
+            "id",
+            "branch",
+            "table",
+            "customer_name",
+            "customer_phone",
+            "party_size",
+            "quoted_wait_minutes",
+            "status",
+            "notes",
+            "seated_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        instance = getattr(self, "instance", None)
+        branch = attrs.get("branch", instance.branch if instance else None)
+        table = attrs.get("table", instance.table if instance else None)
+
+        if branch and branch.tenant_id != request.user.tenant_id:
+            raise serializers.ValidationError({"branch": "Branch must belong to your tenant."})
+
+        if table and branch and table.branch_id != branch.id:
+            raise serializers.ValidationError({"table": "Table must belong to selected branch."})
 
         return attrs

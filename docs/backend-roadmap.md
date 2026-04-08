@@ -22,8 +22,10 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 - Phase 1: Completed
 	- Tenant registration, branch management, role-aware user management, password/PIN login, logout, profile endpoint, session logging, and activity logs are implemented.
 	- Automated tests cover key Phase 1 flows.
-- Phase 2: Started
-	- Initial menu and dining layout foundations are implemented with migrations and starter CRUD endpoints for categories, items, floor plans, tables, and reservations.
+- Phase 2: In progress (advanced)
+	- Menu and dining layout foundations are implemented with CRUD endpoints for categories, items, floor plans, tables, reservations, and waitlist.
+	- Allergen catalog, item-allergen mapping, and menu schedule windows are implemented.
+	- Reservation and waitlist status actions are implemented with automatic table-state sync.
 
 ## 2. Target Tech Stack
 
