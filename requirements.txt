@@ -1,0 +1,7 @@
+Django==6.0.4
+djangorestframework==3.16.0
+djangorestframework-simplejwt==5.5.1
+django-cors-headers==4.9.0
+python-dotenv==1.1.1
+psycopg2-binary==2.9.10
+pypdf==6.9.2
