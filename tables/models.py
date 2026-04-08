@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 
 
 class FloorPlan(models.Model):
@@ -72,6 +73,13 @@ class Reservation(models.Model):
 
     class Meta:
         ordering = ["reserved_for"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["table", "reserved_for"],
+                condition=Q(table__isnull=False) & ~Q(status="CANCELED"),
+                name="uniq_active_reservation_per_table_time",
+            )
+        ]
 
     def __str__(self):
         return f"{self.customer_name} - {self.reserved_for}"

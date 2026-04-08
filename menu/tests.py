@@ -46,3 +46,23 @@ class MenuApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(item_res.status_code, status.HTTP_201_CREATED)
+
+    def test_menu_detail_update_and_delete(self):
+        self._auth()
+        cat_res = self.client.post(
+            "/api/v1/menu/categories",
+            {"branch": self.branch.id, "name": "Pasta", "sort_order": 2},
+            format="json",
+        )
+        self.assertEqual(cat_res.status_code, status.HTTP_201_CREATED)
+
+        patch_res = self.client.patch(
+            f"/api/v1/menu/categories/{cat_res.data['id']}",
+            {"name": "Fresh Pasta"},
+            format="json",
+        )
+        self.assertEqual(patch_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_res.data["name"], "Fresh Pasta")
+
+        delete_res = self.client.delete(f"/api/v1/menu/categories/{cat_res.data['id']}")
+        self.assertEqual(delete_res.status_code, status.HTTP_204_NO_CONTENT)

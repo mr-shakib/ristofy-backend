@@ -44,13 +44,17 @@ class MenuItemSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         request = self.context["request"]
+        instance = getattr(self, "instance", None)
         user_tenant_id = request.user.tenant_id
 
-        branch = attrs.get("branch")
-        category = attrs.get("category")
+        branch = attrs.get("branch", instance.branch if instance else None)
+        category = attrs.get("category", instance.category if instance else None)
 
         if branch and branch.tenant_id != user_tenant_id:
             raise serializers.ValidationError({"branch": "Branch must belong to your tenant."})
+
+        if not category:
+            raise serializers.ValidationError({"category": "Category is required."})
 
         if category.tenant_id != user_tenant_id:
             raise serializers.ValidationError({"category": "Category must belong to your tenant."})

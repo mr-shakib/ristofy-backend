@@ -22,6 +22,11 @@ Create an environment named RMS Local with these variables:
 - refresh_token =
 - user_id =
 - branch_id =
+- category_id =
+- item_id =
+- floor_plan_id =
+- table_id =
+- reservation_id =
 
 ### 1.2 Common Headers
 
@@ -550,6 +555,32 @@ Success response (201):
 }
 ```
 
+Category detail endpoints:
+
+- Method: GET
+- URL: {{base_url}}/menu/categories/{{category_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+- Method: PATCH
+- URL: {{base_url}}/menu/categories/{{category_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+PATCH request body example:
+
+```json
+{
+  "name": "Fresh Pasta",
+  "sort_order": 2,
+  "is_active": true
+}
+```
+
+- Method: DELETE
+- URL: {{base_url}}/menu/categories/{{category_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+DELETE success response: 204 No Content
+
 ## 3.14 Menu Items (Phase 2 Start)
 
 - Method: GET
@@ -592,6 +623,32 @@ Success response (201):
 }
 ```
 
+Menu item detail endpoints:
+
+- Method: GET
+- URL: {{base_url}}/menu/items/{{item_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+- Method: PATCH
+- URL: {{base_url}}/menu/items/{{item_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+PATCH request body example:
+
+```json
+{
+  "description": "Updated description",
+  "base_price": "11.50",
+  "is_active": true
+}
+```
+
+- Method: DELETE
+- URL: {{base_url}}/menu/items/{{item_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+DELETE success response: 204 No Content
+
 ## 3.15 Floor Plans (Phase 2 Start)
 
 - Method: GET
@@ -633,6 +690,34 @@ Success response (201):
 }
 ```
 
+Floor plan detail endpoints:
+
+- Method: GET
+- URL: {{base_url}}/floor-plans/{{floor_plan_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+- Method: PATCH
+- URL: {{base_url}}/floor-plans/{{floor_plan_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+PATCH request body example:
+
+```json
+{
+  "name": "Main Hall Updated",
+  "layout_json": {
+    "w": 120,
+    "h": 70
+  }
+}
+```
+
+- Method: DELETE
+- URL: {{base_url}}/floor-plans/{{floor_plan_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+DELETE success response: 204 No Content
+
 ## 3.16 Tables (Phase 2 Start)
 
 - Method: GET
@@ -673,6 +758,31 @@ Success response (201):
   "updated_at": "2026-04-08T10:33:15.110000Z"
 }
 ```
+
+Table detail endpoints:
+
+- Method: GET
+- URL: {{base_url}}/tables/{{table_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+- Method: PATCH
+- URL: {{base_url}}/tables/{{table_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+PATCH request body example:
+
+```json
+{
+  "state": "RESERVED",
+  "seats": 6
+}
+```
+
+- Method: DELETE
+- URL: {{base_url}}/tables/{{table_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+DELETE success response: 204 No Content
 
 ## 3.17 Reservations (Phase 2 Start)
 
@@ -717,6 +827,45 @@ Success response (201):
 }
 ```
 
+Reservation detail endpoints:
+
+- Method: GET
+- URL: {{base_url}}/reservations/{{reservation_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+- Method: PATCH
+- URL: {{base_url}}/reservations/{{reservation_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+PATCH request body example:
+
+```json
+{
+  "status": "ARRIVED",
+  "notes": "Guests have arrived"
+}
+```
+
+- Method: DELETE
+- URL: {{base_url}}/reservations/{{reservation_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+DELETE success response: 204 No Content
+
+Common errors:
+
+- 400 when trying to reserve the same table and time slot twice (active reservation overlap)
+
+Example 400:
+
+```json
+{
+  "reserved_for": [
+    "This table is already reserved for the selected time slot."
+  ]
+}
+```
+
 ## 4. Postman Tests Script Snippets
 
 Add this to login and register requests Tests tab to store tokens:
@@ -732,6 +881,21 @@ if (json.user && json.user.id) {
 }
 if (json.branch && json.branch.id) {
   pm.environment.set("branch_id", json.branch.id);
+}
+if (json.id && pm.request.url.toString().includes('/menu/categories')) {
+  pm.environment.set("category_id", json.id);
+}
+if (json.id && pm.request.url.toString().includes('/menu/items')) {
+  pm.environment.set("item_id", json.id);
+}
+if (json.id && pm.request.url.toString().includes('/floor-plans')) {
+  pm.environment.set("floor_plan_id", json.id);
+}
+if (json.id && pm.request.url.toString().includes('/tables')) {
+  pm.environment.set("table_id", json.id);
+}
+if (json.id && pm.request.url.toString().includes('/reservations')) {
+  pm.environment.set("reservation_id", json.id);
 }
 ```
 

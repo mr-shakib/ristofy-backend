@@ -42,8 +42,9 @@ class DiningTableSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         request = self.context["request"]
-        branch = attrs.get("branch")
-        floor_plan = attrs.get("floor_plan")
+        instance = getattr(self, "instance", None)
+        branch = attrs.get("branch", instance.branch if instance else None)
+        floor_plan = attrs.get("floor_plan", instance.floor_plan if instance else None)
 
         if branch and branch.tenant_id != request.user.tenant_id:
             raise serializers.ValidationError({"branch": "Branch must belong to your tenant."})
@@ -74,13 +75,29 @@ class ReservationSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         request = self.context["request"]
-        branch = attrs.get("branch")
-        table = attrs.get("table")
+        instance = getattr(self, "instance", None)
+        branch = attrs.get("branch", instance.branch if instance else None)
+        table = attrs.get("table", instance.table if instance else None)
+        reserved_for = attrs.get("reserved_for", instance.reserved_for if instance else None)
+        status = attrs.get("status", instance.status if instance else None)
 
         if branch and branch.tenant_id != request.user.tenant_id:
             raise serializers.ValidationError({"branch": "Branch must belong to your tenant."})
 
         if table and branch and table.branch_id != branch.id:
             raise serializers.ValidationError({"table": "Table must belong to selected branch."})
+
+        if table and reserved_for and status != Reservation.Status.CANCELED:
+            overlap_qs = Reservation.objects.filter(
+                table=table,
+                reserved_for=reserved_for,
+            ).exclude(status=Reservation.Status.CANCELED)
+            if instance:
+                overlap_qs = overlap_qs.exclude(id=instance.id)
+
+            if overlap_qs.exists():
+                raise serializers.ValidationError(
+                    {"reserved_for": "This table is already reserved for the selected time slot."}
+                )
 
         return attrs

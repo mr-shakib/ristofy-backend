@@ -66,3 +66,88 @@ class TablesApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(reservation_res.status_code, status.HTTP_201_CREATED)
+
+    def test_table_detail_update(self):
+        self._auth()
+        floor_res = self.client.post(
+            "/api/v1/floor-plans",
+            {"branch": self.branch.id, "name": "Patio", "layout_json": {}},
+            format="json",
+        )
+        table_res = self.client.post(
+            "/api/v1/tables",
+            {
+                "branch": self.branch.id,
+                "floor_plan": floor_res.data["id"],
+                "code": "T9",
+                "seats": 2,
+                "state": "FREE",
+                "x": 0,
+                "y": 0,
+            },
+            format="json",
+        )
+
+        update_res = self.client.patch(
+            f"/api/v1/tables/{table_res.data['id']}",
+            {"state": "RESERVED", "seats": 6},
+            format="json",
+        )
+        self.assertEqual(update_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(update_res.data["state"], "RESERVED")
+        self.assertEqual(update_res.data["seats"], 6)
+
+    def test_reservation_overlap_is_rejected(self):
+        self._auth()
+        floor_res = self.client.post(
+            "/api/v1/floor-plans",
+            {"branch": self.branch.id, "name": "Main Hall", "layout_json": {}},
+            format="json",
+        )
+        table_res = self.client.post(
+            "/api/v1/tables",
+            {
+                "branch": self.branch.id,
+                "floor_plan": floor_res.data["id"],
+                "code": "T1",
+                "seats": 4,
+                "state": "FREE",
+                "x": 10,
+                "y": 20,
+            },
+            format="json",
+        )
+        timeslot = (timezone.now() + timedelta(hours=2)).replace(microsecond=0).isoformat()
+
+        first = self.client.post(
+            "/api/v1/reservations",
+            {
+                "branch": self.branch.id,
+                "table": table_res.data["id"],
+                "customer_name": "Mario Rossi",
+                "customer_phone": "+390000000",
+                "party_size": 2,
+                "reserved_for": timeslot,
+                "status": "CONFIRMED",
+                "notes": "Window seat",
+            },
+            format="json",
+        )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+
+        second = self.client.post(
+            "/api/v1/reservations",
+            {
+                "branch": self.branch.id,
+                "table": table_res.data["id"],
+                "customer_name": "Luigi Verdi",
+                "customer_phone": "+390000111",
+                "party_size": 3,
+                "reserved_for": timeslot,
+                "status": "CONFIRMED",
+                "notes": "Near entrance",
+            },
+            format="json",
+        )
+        self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("reserved_for", second.data)
