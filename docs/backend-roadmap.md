@@ -15,6 +15,16 @@ The scope of this document covers:
 
 This is backend-first documentation. Flutter frontend, Go realtime dispatcher, and Go local bridge are covered only at their integration boundaries.
 
+## 1.1 Current Implementation Status
+
+- Phase 0: Completed
+	- Environment-based settings, JWT baseline, CI checks, and git hygiene are in place.
+- Phase 1: Completed
+	- Tenant registration, branch management, role-aware user management, password/PIN login, logout, profile endpoint, session logging, and activity logs are implemented.
+	- Automated tests cover key Phase 1 flows.
+- Phase 2: Started
+	- Initial menu and dining layout foundations are implemented with migrations and starter CRUD endpoints for categories, items, floor plans, tables, and reservations.
+
 ## 2. Target Tech Stack
 
 - API and business backend: Django + Django REST Framework

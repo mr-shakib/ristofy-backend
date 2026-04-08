@@ -39,6 +39,8 @@ For public endpoints:
 - Auth
 - Tenants
 - Users
+- Menu
+- Tables
 
 ## 2. Quick End-to-End Test Flow in Postman
 
@@ -46,13 +48,21 @@ Run requests in this order:
 
 1. Register tenant owner account
 2. Login with username and password
-3. Get branches
-4. Create branch
-5. Get users
-6. Create user
-7. Set PIN for a user
-8. Login with PIN
-9. Refresh token
+3. Get profile (me)
+4. Get branches
+5. Create branch
+6. Get users
+7. Create user
+8. Set PIN for a user
+9. Login with PIN
+10. Get activity logs
+11. Refresh token
+12. Logout
+13. Create menu category
+14. Create menu item
+15. Create floor plan
+16. Create table
+17. Create reservation
 
 ## 3. Endpoint Documentation
 
@@ -407,6 +417,305 @@ Common errors:
 - 400 invalid pin format (must be 4-8 digits)
 - 404 user not found in your tenant
 - 403 permission denied for setting another user pin
+
+## 3.10 Logout
+
+- Method: POST
+- URL: {{base_url}}/auth/logout
+- Auth: Yes
+
+Request body:
+
+```json
+{
+  "refresh": "{{refresh_token}}"
+}
+```
+
+Success response (200):
+
+```json
+{
+  "detail": "Logged out successfully."
+}
+```
+
+Common errors:
+
+- 400 invalid refresh token
+- 403 trying to logout another user's session
+
+## 3.11 Get/Update Current User
+
+- Method: GET
+- URL: {{base_url}}/me
+- Auth: Yes
+
+Success response (200):
+
+```json
+{
+  "id": 30,
+  "username": "owner_demo",
+  "email": "owner@example.com",
+  "first_name": "Demo",
+  "last_name": "Owner",
+  "role": "OWNER",
+  "tenant": 10,
+  "tenant_name": "Demo Tenant",
+  "branch": 20,
+  "branch_name": "Main Branch",
+  "is_active": true,
+  "date_joined": "2026-04-08T09:43:36.268519Z"
+}
+```
+
+- Method: PATCH
+- URL: {{base_url}}/me
+- Auth: Yes
+
+Request body:
+
+```json
+{
+  "first_name": "Updated",
+  "last_name": "Owner"
+}
+```
+
+Success response (200): same shape as GET `/me`.
+
+## 3.12 Activity Logs
+
+- Method: GET
+- URL: {{base_url}}/activity-logs
+- Auth: Yes (OWNER or MANAGER)
+
+Optional query params:
+
+- limit (example: `?limit=25`)
+
+Success response (200):
+
+```json
+[
+  {
+    "id": 11,
+    "action": "user_created",
+    "entity_type": "user",
+    "entity_id": "42",
+    "metadata_json": {},
+    "created_at": "2026-04-08T10:33:15.110000Z",
+    "actor_user": 30,
+    "actor_username": "owner_demo",
+    "branch": 20,
+    "branch_name": "Main Branch"
+  }
+]
+```
+
+## 3.13 Menu Categories (Phase 2 Start)
+
+- Method: GET
+- URL: {{base_url}}/menu/categories
+- Auth: Yes (OWNER or MANAGER)
+
+- Method: POST
+- URL: {{base_url}}/menu/categories
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "name": "Pizza",
+  "sort_order": 1,
+  "is_active": true
+}
+```
+
+Success response (201):
+
+```json
+{
+  "id": 1,
+  "tenant": 10,
+  "branch": 20,
+  "name": "Pizza",
+  "sort_order": 1,
+  "is_active": true,
+  "created_at": "2026-04-08T10:33:15.110000Z",
+  "updated_at": "2026-04-08T10:33:15.110000Z"
+}
+```
+
+## 3.14 Menu Items (Phase 2 Start)
+
+- Method: GET
+- URL: {{base_url}}/menu/items
+- Auth: Yes (OWNER or MANAGER)
+
+- Method: POST
+- URL: {{base_url}}/menu/items
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "category": 1,
+  "name": "Margherita",
+  "description": "Classic tomato and mozzarella",
+  "base_price": "10.00",
+  "vat_rate": "10.00",
+  "is_active": true
+}
+```
+
+Success response (201):
+
+```json
+{
+  "id": 1,
+  "tenant": 10,
+  "branch": 20,
+  "category": 1,
+  "name": "Margherita",
+  "description": "Classic tomato and mozzarella",
+  "base_price": "10.00",
+  "vat_rate": "10.00",
+  "is_active": true,
+  "created_at": "2026-04-08T10:33:15.110000Z",
+  "updated_at": "2026-04-08T10:33:15.110000Z"
+}
+```
+
+## 3.15 Floor Plans (Phase 2 Start)
+
+- Method: GET
+- URL: {{base_url}}/floor-plans
+- Auth: Yes (OWNER or MANAGER)
+
+- Method: POST
+- URL: {{base_url}}/floor-plans
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "name": "Main Hall",
+  "layout_json": {
+    "w": 100,
+    "h": 60
+  },
+  "is_active": true
+}
+```
+
+Success response (201):
+
+```json
+{
+  "id": 1,
+  "branch": 20,
+  "name": "Main Hall",
+  "layout_json": {
+    "w": 100,
+    "h": 60
+  },
+  "is_active": true,
+  "created_at": "2026-04-08T10:33:15.110000Z",
+  "updated_at": "2026-04-08T10:33:15.110000Z"
+}
+```
+
+## 3.16 Tables (Phase 2 Start)
+
+- Method: GET
+- URL: {{base_url}}/tables
+- Auth: Yes (OWNER or MANAGER)
+
+- Method: POST
+- URL: {{base_url}}/tables
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "floor_plan": 1,
+  "code": "T1",
+  "seats": 4,
+  "state": "FREE",
+  "x": 10,
+  "y": 20
+}
+```
+
+Success response (201):
+
+```json
+{
+  "id": 1,
+  "branch": 20,
+  "floor_plan": 1,
+  "code": "T1",
+  "seats": 4,
+  "state": "FREE",
+  "x": 10,
+  "y": 20,
+  "created_at": "2026-04-08T10:33:15.110000Z",
+  "updated_at": "2026-04-08T10:33:15.110000Z"
+}
+```
+
+## 3.17 Reservations (Phase 2 Start)
+
+- Method: GET
+- URL: {{base_url}}/reservations
+- Auth: Yes (OWNER or MANAGER)
+
+- Method: POST
+- URL: {{base_url}}/reservations
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "table": 1,
+  "customer_name": "Mario Rossi",
+  "customer_phone": "+390000000",
+  "party_size": 2,
+  "reserved_for": "2026-04-08T20:30:00Z",
+  "status": "CONFIRMED",
+  "notes": "Window seat"
+}
+```
+
+Success response (201):
+
+```json
+{
+  "id": 1,
+  "branch": 20,
+  "table": 1,
+  "customer_name": "Mario Rossi",
+  "customer_phone": "+390000000",
+  "party_size": 2,
+  "reserved_for": "2026-04-08T20:30:00Z",
+  "status": "CONFIRMED",
+  "notes": "Window seat",
+  "created_at": "2026-04-08T10:33:15.110000Z",
+  "updated_at": "2026-04-08T10:33:15.110000Z"
+}
+```
 
 ## 4. Postman Tests Script Snippets
 
