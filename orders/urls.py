@@ -1,5 +1,16 @@
 from django.urls import path
 
+from .buffet_views import (
+    BuffetAnalyticsView,
+    BuffetPlanDetailView,
+    BuffetPlanListCreateView,
+    BuffetSessionCloseRoundView,
+    BuffetSessionDetailView,
+    BuffetSessionEndView,
+    BuffetSessionNewRoundView,
+    BuffetSessionStartView,
+    WasteLogCreateView,
+)
 from .views import (
     KitchenTicketListView,
     KitchenTicketPreparedView,
@@ -36,4 +47,16 @@ urlpatterns = [
     # Kitchen
     path("kitchen/tickets", KitchenTicketListView.as_view(), name="kitchen-ticket-list"),
     path("kitchen/tickets/<int:pk>/prepared", KitchenTicketPreparedView.as_view(), name="kitchen-ticket-prepared"),
+    # Buffet plans
+    path("buffet/plans", BuffetPlanListCreateView.as_view(), name="buffet-plan-list-create"),
+    path("buffet/plans/<int:pk>", BuffetPlanDetailView.as_view(), name="buffet-plan-detail"),
+    # Buffet sessions
+    path("buffet/sessions/start", BuffetSessionStartView.as_view(), name="buffet-session-start"),
+    path("buffet/sessions/<int:pk>", BuffetSessionDetailView.as_view(), name="buffet-session-detail"),
+    path("buffet/sessions/<int:pk>/end", BuffetSessionEndView.as_view(), name="buffet-session-end"),
+    path("buffet/sessions/<int:pk>/new-round", BuffetSessionNewRoundView.as_view(), name="buffet-session-new-round"),
+    path("buffet/sessions/<int:pk>/close-round", BuffetSessionCloseRoundView.as_view(), name="buffet-session-close-round"),
+    # Waste and analytics
+    path("waste-logs", WasteLogCreateView.as_view(), name="waste-log-create"),
+    path("buffet/analytics", BuffetAnalyticsView.as_view(), name="buffet-analytics"),
 ]

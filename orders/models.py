@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.db import models, transaction
 from django.db.models import Max, Q
+from django.utils import timezone
 
 
 class Order(models.Model):
@@ -128,3 +131,125 @@ class KitchenTicket(models.Model):
     def __str__(self):
         course_label = f" [{self.course}]" if self.course else ""
         return f"Ticket #{self.pk} Order #{self.order_id}{course_label} [{self.status}]"
+
+
+# ─── Phase 4: Buffet ──────────────────────────────────────────────────────────
+
+class BuffetPlan(models.Model):
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="buffet_plans")
+    name = models.CharField(max_length=160)
+    base_price = models.DecimalField(max_digits=10, decimal_places=2)
+    kids_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    time_limit_minutes = models.PositiveSmallIntegerField(default=90)
+    waste_penalty_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    round_limit_per_person = models.PositiveSmallIntegerField(default=0, help_text="0 = unlimited")
+    round_delay_seconds = models.PositiveIntegerField(default=0, help_text="Min seconds between rounds. 0 = no delay.")
+    active_from = models.DateField(null=True, blank=True)
+    active_to = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.branch.name})"
+
+
+class BuffetSession(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        ENDED = "ENDED", "Ended"
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="buffet_sessions")
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="buffet_sessions")
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="buffet_session",
+    )
+    buffet_plan = models.ForeignKey(BuffetPlan, on_delete=models.PROTECT, related_name="sessions")
+    adults_count = models.PositiveSmallIntegerField(default=1)
+    kids_count = models.PositiveSmallIntegerField(default=0)
+    started_at = models.DateTimeField(default=timezone.now)
+    ends_at = models.DateTimeField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+
+    def save(self, *args, **kwargs):
+        if not self.pk and not self.ends_at:
+            self.ends_at = self.started_at + timedelta(minutes=self.buffet_plan.time_limit_minutes)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"BuffetSession #{self.pk} [{self.status}] — {self.branch.name}"
+
+    @property
+    def total_guests(self):
+        return self.adults_count + self.kids_count
+
+    def round_limit_reached(self):
+        limit = self.buffet_plan.round_limit_per_person
+        if limit == 0:
+            return False
+        return self.rounds.count() >= limit
+
+    def seconds_since_last_closed_round(self):
+        last = self.rounds.filter(closed_at__isnull=False).order_by("-closed_at").first()
+        if not last:
+            return None
+        return (timezone.now() - last.closed_at).total_seconds()
+
+
+class BuffetRound(models.Model):
+    buffet_session = models.ForeignKey(BuffetSession, on_delete=models.CASCADE, related_name="rounds")
+    round_number = models.PositiveSmallIntegerField()
+    opened_at = models.DateTimeField(default=timezone.now)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["round_number"]
+        unique_together = ("buffet_session", "round_number")
+
+    def __str__(self):
+        return f"Round #{self.round_number} (Session #{self.buffet_session_id})"
+
+    @property
+    def is_open(self):
+        return self.closed_at is None
+
+
+class WasteLog(models.Model):
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="waste_logs")
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="waste_logs")
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="waste_logs",
+    )
+    quantity_wasted = models.PositiveSmallIntegerField(default=1)
+    penalty_applied = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    marked_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="waste_logs",
+    )
+    reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"WasteLog #{self.pk} x{self.quantity_wasted} (Branch: {self.branch.name})"

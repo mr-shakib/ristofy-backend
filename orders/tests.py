@@ -1,3 +1,10 @@
+from .buffet_tests import (  # noqa: F401 — re-exported for test discovery
+    BuffetAnalyticsTests,
+    BuffetPlanTests,
+    BuffetRoundTests,
+    BuffetSessionTests,
+    WasteLogTests,
+)
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APITestCase

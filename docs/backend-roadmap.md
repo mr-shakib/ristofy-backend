@@ -40,6 +40,13 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Printer and PrintJob models in printers app; PrintJob queued per KitchenTicket on fire.
 	- events.py stub publishes structured order events (Redis-ready, logs for now).
 	- Tenant and branch isolation enforced. 66 tests passing.
+- Phase 4: Completed
+	- BuffetPlan CRUD: GET/POST /buffet/plans, GET/PATCH /buffet/plans/{id} (branch/is_active filters).
+	- BuffetSession lifecycle: start (auto-computes ends_at), detail with nested rounds, end (auto-closes open round).
+	- BuffetRound: new-round (enforces round limit and delay), close-round; end auto-closes open rounds.
+	- WasteLog: POST /waste-logs with auto-penalty from buffet plan; marked_by set to caller.
+	- GET /buffet/analytics with branch/date filters (sessions, guests, waste totals).
+	- 98 tests passing (32 new buffet tests).
 
 ## 2. Target Tech Stack
 

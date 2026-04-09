@@ -1423,6 +1423,126 @@ if (json.access) pm.environment.set("access_token", json.access);
 if (json.refresh) pm.environment.set("refresh_token", json.refresh);
 ```
 
+## 3.27 Buffet Plans (Phase 4)
+
+- Method: GET / POST
+- URL: {{base_url}}/buffet/plans
+- Auth: Yes (OWNER or MANAGER)
+
+POST request body:
+
+```json
+{
+  "branch": 20,
+  "name": "Sunday Buffet",
+  "base_price": "25.00",
+  "kids_price": "12.00",
+  "time_limit_minutes": 90,
+  "waste_penalty_amount": "5.00",
+  "round_limit_per_person": 3,
+  "round_delay_seconds": 300,
+  "active_from": "2026-05-01",
+  "active_to": "2026-08-31",
+  "is_active": true
+}
+```
+
+- Method: GET / PATCH
+- URL: {{base_url}}/buffet/plans/{{plan_id}}
+
+Supported list filters: `branch`, `is_active`
+
+## 3.28 Buffet Sessions (Phase 4)
+
+### Start Session
+
+- Method: POST
+- URL: {{base_url}}/buffet/sessions/start
+- Auth: Yes (WAITER or above)
+
+```json
+{
+  "branch": 20,
+  "buffet_plan": 1,
+  "order": 5,
+  "adults_count": 4,
+  "kids_count": 1
+}
+```
+
+`order` is optional. `ends_at` is auto-computed from `buffet_plan.time_limit_minutes`.
+
+### Get Session
+
+- Method: GET
+- URL: {{base_url}}/buffet/sessions/{{session_id}}
+
+Response includes nested `rounds` array and `is_expired` flag.
+
+### End Session
+
+- Method: POST
+- URL: {{base_url}}/buffet/sessions/{{session_id}}/end
+- Auth: Yes (OWNER or MANAGER)
+
+Auto-closes any open round. Transitions status to `ENDED`.
+
+### New Round
+
+- Method: POST
+- URL: {{base_url}}/buffet/sessions/{{session_id}}/new-round
+- Auth: Yes (WAITER or above)
+
+No body. Creates next round. Errors if:
+- A round is already open
+- Round limit per person reached
+- Round delay seconds not elapsed since last closed round
+
+### Close Round
+
+- Method: POST
+- URL: {{base_url}}/buffet/sessions/{{session_id}}/close-round
+- Auth: Yes (WAITER or above)
+
+No body. Closes the current open round.
+
+## 3.29 Waste Logs (Phase 4)
+
+- Method: POST
+- URL: {{base_url}}/waste-logs
+- Auth: Yes (OWNER or MANAGER)
+
+```json
+{
+  "branch": 20,
+  "order_item": 7,
+  "quantity_wasted": 2,
+  "reason": "Left on plate"
+}
+```
+
+`penalty_applied` is auto-calculated from the linked buffet session plan (`waste_penalty_amount × quantity_wasted`). Zero if no buffet session.
+
+## 3.30 Buffet Analytics (Phase 4)
+
+- Method: GET
+- URL: {{base_url}}/buffet/analytics
+- Auth: Yes (OWNER or MANAGER)
+
+Supported filters: `branch`, `date_from`, `date_to`
+
+Success response:
+
+```json
+{
+  "total_sessions": 12,
+  "total_adults": 48,
+  "total_kids": 10,
+  "total_waste_logs": 5,
+  "total_penalty": "25.00"
+}
+```
+
 ## 5. Common Troubleshooting
 
 - 401 Unauthorized:
