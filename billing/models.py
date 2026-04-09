@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import models, transaction
@@ -295,6 +296,59 @@ class Bill(models.Model):
 
         return payment
 
+    def send_to_fiscal(self):
+        """Simulate fiscal issue command and persist receipt + transaction audit."""
+        if self.status == self.Status.DRAFT:
+            raise ValueError("Bill must be finalized before fiscal issuance.")
+
+        with transaction.atomic():
+            locked_bill = (
+                Bill.objects.select_for_update()
+                .select_related("tenant", "branch")
+                .get(pk=self.pk)
+            )
+
+            if hasattr(locked_bill, "receipt"):
+                raise ValueError("A fiscal receipt already exists for this bill.")
+
+            sequence = (
+                Receipt.objects.select_for_update()
+                .filter(bill__branch=locked_bill.branch)
+                .count()
+                + 1
+            )
+            fiscal_receipt_no = f"FR-{locked_bill.branch_id}-{sequence:06d}"
+            external_id = f"fiscal-{uuid.uuid4().hex[:20]}"
+
+            fiscal_tx = FiscalTransaction.objects.create(
+                tenant=locked_bill.tenant,
+                branch=locked_bill.branch,
+                bill=locked_bill,
+                transaction_type=FiscalTransaction.TransactionType.ISSUE_RECEIPT,
+                status=FiscalTransaction.Status.SENT,
+                external_id=external_id,
+                request_json={
+                    "bill_id": locked_bill.id,
+                    "bill_no": locked_bill.bill_no,
+                    "grand_total": str(locked_bill.grand_total),
+                },
+            )
+
+            receipt = Receipt.objects.create(
+                bill=locked_bill,
+                fiscal_receipt_no=fiscal_receipt_no,
+            )
+
+            fiscal_tx.receipt = receipt
+            fiscal_tx.status = FiscalTransaction.Status.COMPLETED
+            fiscal_tx.response_json = {
+                "receipt_id": receipt.id,
+                "fiscal_receipt_no": receipt.fiscal_receipt_no,
+            }
+            fiscal_tx.save(update_fields=["receipt", "status", "response_json", "updated_at"])
+
+            return receipt, fiscal_tx
+
 
 class BillLine(models.Model):
     class SourceType(models.TextChoices):
@@ -339,3 +393,124 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"Payment {self.method} {self.amount} (Bill #{self.bill_id})"
+
+
+class Receipt(models.Model):
+    bill = models.OneToOneField(Bill, on_delete=models.PROTECT, related_name="receipt")
+    fiscal_receipt_no = models.CharField(max_length=64, unique=True)
+    z_report_no = models.CharField(max_length=64, null=True, blank=True)
+    issued_at = models.DateTimeField(default=timezone.now)
+    reprint_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-issued_at"]
+
+    def __str__(self):
+        return f"Receipt {self.fiscal_receipt_no} (Bill #{self.bill_id})"
+
+    @property
+    def refunded_total(self):
+        result = self.refunds.filter(status=Refund.Status.COMPLETED).aggregate(total=Sum("amount"))
+        return quantize_money(result["total"] or Decimal("0.00"))
+
+    def register_reprint(self):
+        self.reprint_count += 1
+        self.save(update_fields=["reprint_count"])
+
+        tx = FiscalTransaction.objects.create(
+            tenant=self.bill.tenant,
+            branch=self.bill.branch,
+            bill=self.bill,
+            receipt=self,
+            transaction_type=FiscalTransaction.TransactionType.REPRINT_RECEIPT,
+            status=FiscalTransaction.Status.COMPLETED,
+            request_json={"receipt_id": self.id},
+            response_json={"reprint_count": self.reprint_count},
+            external_id=f"reprint-{uuid.uuid4().hex[:20]}",
+        )
+        return tx
+
+    def create_refund(self, *, amount: Decimal, reason: str = ""):
+        amount = quantize_money(Decimal(amount))
+        if amount <= Decimal("0.00"):
+            raise ValueError("Refund amount must be greater than zero.")
+
+        remaining_refundable = quantize_money(self.bill.grand_total - self.refunded_total)
+        if amount > remaining_refundable:
+            raise ValueError("Refund amount exceeds refundable total.")
+
+        refund = Refund.objects.create(
+            receipt=self,
+            amount=amount,
+            reason=reason,
+            status=Refund.Status.COMPLETED,
+            fiscal_refund_no=f"RF-{uuid.uuid4().hex[:20]}",
+        )
+
+        tx = FiscalTransaction.objects.create(
+            tenant=self.bill.tenant,
+            branch=self.bill.branch,
+            bill=self.bill,
+            receipt=self,
+            transaction_type=FiscalTransaction.TransactionType.REFUND_RECEIPT,
+            status=FiscalTransaction.Status.COMPLETED,
+            request_json={"receipt_id": self.id, "amount": str(amount), "reason": reason},
+            response_json={"refund_id": refund.id, "fiscal_refund_no": refund.fiscal_refund_no},
+            external_id=f"refund-{uuid.uuid4().hex[:20]}",
+        )
+        return refund, tx
+
+
+class Refund(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    receipt = models.ForeignKey(Receipt, on_delete=models.CASCADE, related_name="refunds")
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.COMPLETED)
+    fiscal_refund_no = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Refund {self.amount} for receipt #{self.receipt_id}"
+
+
+class FiscalTransaction(models.Model):
+    class TransactionType(models.TextChoices):
+        ISSUE_RECEIPT = "ISSUE_RECEIPT", "Issue Receipt"
+        REPRINT_RECEIPT = "REPRINT_RECEIPT", "Reprint Receipt"
+        REFUND_RECEIPT = "REFUND_RECEIPT", "Refund Receipt"
+        Z_REPORT_SYNC = "Z_REPORT_SYNC", "Z Report Sync"
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        SENT = "SENT", "Sent"
+        ACKED = "ACKED", "Acknowledged"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="fiscal_transactions")
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="fiscal_transactions")
+    bill = models.ForeignKey(Bill, on_delete=models.SET_NULL, null=True, blank=True, related_name="fiscal_transactions")
+    receipt = models.ForeignKey(Receipt, on_delete=models.SET_NULL, null=True, blank=True, related_name="fiscal_transactions")
+    transaction_type = models.CharField(max_length=30, choices=TransactionType.choices)
+    request_json = models.JSONField(default=dict, blank=True)
+    response_json = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    external_id = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    error_code = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"FiscalTx {self.transaction_type} [{self.status}] #{self.id}"

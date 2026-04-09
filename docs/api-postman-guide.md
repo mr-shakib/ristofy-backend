@@ -1714,6 +1714,154 @@ Common action errors:
 - 400 when paying a draft bill
 - 400 when paying an already paid bill
 
+## 3.32 Fiscal Integration (Phase 6 - Implemented)
+
+### Send Bill to Fiscal
+
+- Method: POST
+- URL: {{base_url}}/bills/{{bill_id}}/send-to-fiscal
+- Auth: Yes (OWNER or MANAGER)
+
+Behavior:
+
+- Requires bill status `FINALIZED` or `PAID`.
+- Creates a fiscal transaction (`ISSUE_RECEIPT`) and a receipt record.
+- Rejects duplicate issuance if receipt already exists.
+
+Success response (200):
+
+```json
+{
+  "receipt": {
+    "id": 1,
+    "bill": 1,
+    "fiscal_receipt_no": "FR-20-000001",
+    "z_report_no": null,
+    "issued_at": "2026-04-10T13:30:00.000000Z",
+    "reprint_count": 0,
+    "refunded_total": "0.00",
+    "refunds": [],
+    "created_at": "2026-04-10T13:30:00.000000Z"
+  },
+  "fiscal_transaction": {
+    "id": 10,
+    "transaction_type": "ISSUE_RECEIPT",
+    "status": "COMPLETED",
+    "external_id": "fiscal-abc123",
+    "request_json": {
+      "bill_id": 1,
+      "bill_no": 1,
+      "grand_total": "38.60"
+    },
+    "response_json": {
+      "receipt_id": 1,
+      "fiscal_receipt_no": "FR-20-000001"
+    }
+  }
+}
+```
+
+### Get Receipt Detail
+
+- Method: GET
+- URL: {{base_url}}/receipts/{{receipt_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+Tenant isolation enforced (404 outside tenant scope).
+
+### Reprint Receipt
+
+- Method: POST
+- URL: {{base_url}}/receipts/{{receipt_id}}/reprint
+- Auth: Yes (OWNER or MANAGER)
+
+Behavior:
+
+- Increments `reprint_count`.
+- Writes fiscal transaction (`REPRINT_RECEIPT`).
+
+### Refund Receipt
+
+- Method: POST
+- URL: {{base_url}}/receipts/{{receipt_id}}/refund
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "amount": "5.00",
+  "reason": "Customer complaint"
+}
+```
+
+Behavior:
+
+- Creates refund row and fiscal transaction (`REFUND_RECEIPT`).
+- Rejects refund amount above remaining refundable total.
+
+### Z Report Sync
+
+- Method: POST
+- URL: {{base_url}}/fiscal/z-report/sync
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "business_date": "2026-04-10",
+  "z_report_no": "Z-2026-04-10-001"
+}
+```
+
+Behavior:
+
+- Creates fiscal transaction (`Z_REPORT_SYNC`).
+- If `z_report_no` provided, updates receipts for the branch with that number.
+
+### Z Report Status
+
+- Method: GET
+- URL: {{base_url}}/fiscal/z-report/status?branch={{branch_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+Success response (200):
+
+```json
+{
+  "last_sync": {
+    "id": 15,
+    "transaction_type": "Z_REPORT_SYNC",
+    "status": "COMPLETED"
+  },
+  "total_syncs": 1
+}
+```
+
+### Bridge Fiscal Ack
+
+- Method: POST
+- URL: {{base_url}}/integrations/bridge/fiscal-ack
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "external_id": "fiscal-abc123",
+  "status": "ACKED",
+  "response_json": {
+    "bridge": "ok"
+  }
+}
+```
+
+Behavior:
+
+- Updates existing fiscal transaction status and optional response payload.
+
 ## 5. Common Troubleshooting
 
 - 401 Unauthorized:

@@ -7,7 +7,7 @@ from menu.models import MenuCategory, MenuItem
 from orders.models import Order, OrderItem
 from tenants.models import Branch, Tenant
 
-from .models import Bill
+from .models import Bill, FiscalTransaction, Receipt
 
 User = get_user_model()
 
@@ -301,3 +301,131 @@ class BillingApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def _create_finalized_bill(self):
+        bill_id = self._create_bill()
+        finalize = self.client.post(f"/api/v1/bills/{bill_id}/finalize")
+        self.assertEqual(finalize.status_code, status.HTTP_200_OK)
+        return bill_id
+
+    def _issue_receipt(self):
+        bill_id = self._create_finalized_bill()
+        res = self.client.post(f"/api/v1/bills/{bill_id}/send-to-fiscal")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return bill_id, res.data["receipt"]["id"]
+
+    def test_send_to_fiscal_requires_finalized_bill(self):
+        bill_id = self._create_bill()
+        res = self.client.post(f"/api/v1/bills/{bill_id}/send-to-fiscal")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_send_to_fiscal_success(self):
+        bill_id = self._create_finalized_bill()
+        res = self.client.post(f"/api/v1/bills/{bill_id}/send-to-fiscal")
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn("receipt", res.data)
+        self.assertIn("fiscal_transaction", res.data)
+        self.assertTrue(res.data["receipt"]["fiscal_receipt_no"].startswith("FR-"))
+        self.assertEqual(res.data["fiscal_transaction"]["transaction_type"], "ISSUE_RECEIPT")
+
+    def test_send_to_fiscal_duplicate_rejected(self):
+        bill_id = self._create_finalized_bill()
+        self.client.post(f"/api/v1/bills/{bill_id}/send-to-fiscal")
+        res = self.client.post(f"/api/v1/bills/{bill_id}/send-to-fiscal")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_receipt_detail(self):
+        _, receipt_id = self._issue_receipt()
+        res = self.client.get(f"/api/v1/receipts/{receipt_id}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["id"], receipt_id)
+
+    def test_receipt_tenant_isolation(self):
+        _, receipt_id = self._issue_receipt()
+        self._auth(self.other_owner)
+        res = self.client.get(f"/api/v1/receipts/{receipt_id}")
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_receipt_reprint(self):
+        _, receipt_id = self._issue_receipt()
+        reprint = self.client.post(f"/api/v1/receipts/{receipt_id}/reprint")
+        self.assertEqual(reprint.status_code, status.HTTP_200_OK)
+        self.assertEqual(reprint.data["reprint_count"], 1)
+
+    def test_receipt_refund(self):
+        _, receipt_id = self._issue_receipt()
+        refund = self.client.post(
+            f"/api/v1/receipts/{receipt_id}/refund",
+            {"amount": "5.00", "reason": "Customer complaint"},
+            format="json",
+        )
+        self.assertEqual(refund.status_code, status.HTTP_200_OK)
+        self.assertEqual(str(refund.data["refunded_total"]), "5.00")
+        self.assertEqual(len(refund.data["refunds"]), 1)
+
+    def test_receipt_refund_over_limit_rejected(self):
+        _, receipt_id = self._issue_receipt()
+        res = self.client.post(
+            f"/api/v1/receipts/{receipt_id}/refund",
+            {"amount": "1000.00", "reason": "Invalid"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_z_report_sync_and_status(self):
+        self._auth(self.manager)
+        sync = self.client.post(
+            "/api/v1/fiscal/z-report/sync",
+            {
+                "branch": self.branch.id,
+                "business_date": "2026-04-10",
+                "z_report_no": "Z-2026-04-10-001",
+            },
+            format="json",
+        )
+        self.assertEqual(sync.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(sync.data["transaction_type"], "Z_REPORT_SYNC")
+
+        status_res = self.client.get(f"/api/v1/fiscal/z-report/status?branch={self.branch.id}")
+        self.assertEqual(status_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(status_res.data["total_syncs"], 1)
+        self.assertIsNotNone(status_res.data["last_sync"])
+
+    def test_bridge_fiscal_ack(self):
+        bill_id = self._create_finalized_bill()
+        bill = Bill.objects.get(pk=bill_id)
+        tx = FiscalTransaction.objects.create(
+            tenant=self.tenant,
+            branch=self.branch,
+            bill=bill,
+            transaction_type=FiscalTransaction.TransactionType.ISSUE_RECEIPT,
+            status=FiscalTransaction.Status.SENT,
+            external_id="ack-ext-1",
+        )
+
+        res = self.client.post(
+            "/api/v1/integrations/bridge/fiscal-ack",
+            {
+                "external_id": "ack-ext-1",
+                "status": "ACKED",
+                "response_json": {"bridge": "ok"},
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["id"], tx.id)
+        self.assertEqual(res.data["status"], "ACKED")
+
+    def test_waiter_forbidden_on_fiscal_endpoints(self):
+        bill_id = self._create_finalized_bill()
+        self._auth(self.waiter)
+
+        send = self.client.post(f"/api/v1/bills/{bill_id}/send-to-fiscal")
+        sync = self.client.post(
+            "/api/v1/fiscal/z-report/sync",
+            {"branch": self.branch.id},
+            format="json",
+        )
+        self.assertEqual(send.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(sync.status_code, status.HTTP_403_FORBIDDEN)

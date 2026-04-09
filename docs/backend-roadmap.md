@@ -47,20 +47,26 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- WasteLog: POST /waste-logs with auto-penalty from buffet plan; marked_by set to caller.
 	- GET /buffet/analytics with branch/date filters (sessions, guests, waste totals).
 	- 98 tests passing (32 new buffet tests).
-- Phase 5: In Progress (Step A-D complete)
+- Phase 5: Completed (core scope)
 	- Bill and BillLine models implemented with branch-sequential bill_no and order-based line materialization.
 	- POST /api/v1/bills/create-from-order and GET /api/v1/bills/{id} implemented.
 	- Billing URLs wired into core API routing.
 	- Step C/D implemented: apply-coperto, apply-discount, finalize, and pay endpoints.
 	- Payment model implemented; bill transitions to PAID when cumulative amount_paid reaches grand_total.
 	- Billing API tests expanded for action/state transition coverage.
-	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (114 tests) using Python 3.14 + SQLite override.
+	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (125 tests) using Python 3.14 + SQLite override.
+- Phase 6: Completed
+	- Fiscal command orchestration model implemented via FiscalTransaction.
+	- Receipt lifecycle implemented: send-to-fiscal, receipt detail, reprint, refund.
+	- Z report sync/status endpoints implemented.
+	- Bridge fiscal acknowledgement endpoint implemented.
+	- Tenant isolation and OWNER/MANAGER permission checks enforced across fiscal endpoints.
 
 ## 1.2 Status Audit Snapshot (2026-04-10)
 
-- Code and docs are aligned for completed scope through Phase 4 and Phase 5 Step A.
-- Billing Step A-D is implemented in code (models, migrations, actions, payment, tests).
-- Remaining Phase 5 work is optional enhancements (for example split-bill flows) beyond current session handoff scope.
+- Code and docs are aligned for completed scope through Phase 6.
+- Billing Step A-D and fiscal integration flows are implemented in code (models, migrations, endpoints, tests).
+- Remaining billing enhancements (for example split-bill flows) are optional and outside completed Phase 6 scope.
 - Default `.venv` in this workspace is Python 3.11 (not compatible with Django 6.0.4); local validation was executed via Python 3.14 virtualenv.
 
 ## 2. Target Tech Stack
