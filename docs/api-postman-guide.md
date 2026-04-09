@@ -1195,7 +1195,37 @@ Common errors:
 - 400 when order is already CANCELED or COMPLETED
 - 404 when order not found in caller's tenant
 
-## 3.24 Order Item Sub-endpoints (Phase 3 Slice 2)
+## 3.24 Order Cancel and Complete Actions (Phase 3 Slice 3)
+
+### Cancel Order
+
+- Method: POST
+- URL: {{base_url}}/orders/{{order_id}}/cancel
+- Auth: Yes (OWNER or MANAGER only)
+
+No request body. Transitions order to `CANCELED`.
+
+Success response (200): full order object with `status: "CANCELED"`.
+
+Common errors:
+- 400 when order is already CANCELED or COMPLETED
+- 403 when caller is WAITER or CASHIER
+
+### Complete Order
+
+- Method: POST
+- URL: {{base_url}}/orders/{{order_id}}/complete
+- Auth: Yes (OWNER or MANAGER only)
+
+No request body. Transitions order to `COMPLETED`.
+
+Success response (200): full order object with `status: "COMPLETED"`.
+
+Common errors:
+- 400 when order is already COMPLETED or CANCELED
+- 403 when caller is WAITER or CASHIER
+
+## 3.25 Order Item Sub-endpoints (Phase 3 Slice 2)
 
 ### Add Item to Existing Order
 
@@ -1245,7 +1275,7 @@ Success response (200): full OrderItem object.
 
 Success response: 204 No Content.
 
-## 3.25 Kitchen Tickets (Phase 3 Slice 2)
+## 3.26 Kitchen Tickets (Phase 3 Slice 2)
 
 A `KitchenTicket` is auto-created when `send-to-kitchen` is called on an order.
 

@@ -26,13 +26,16 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Menu and dining layout foundations are implemented with CRUD endpoints for categories, items, floor plans, tables, reservations, and waitlist.
 	- Allergen catalog, item-allergen mapping, and menu schedule windows are implemented.
 	- Reservation and waitlist status actions are implemented with automatic table-state sync.
-- Phase 3: In progress (Slice 2 complete)
+- Phase 3: In progress (Slice 3 complete)
 	- Order and OrderItem models implemented with full status lifecycle.
 	- POST/GET /api/v1/orders, GET/PATCH /api/v1/orders/{id}, POST /api/v1/orders/{id}/send-to-kitchen implemented.
 	- POST /api/v1/orders/{id}/items, PATCH/DELETE /api/v1/orders/{id}/items/{item_id} implemented.
 	- KitchenTicket model: auto-created on send-to-kitchen; GET /api/v1/kitchen/tickets, POST /api/v1/kitchen/tickets/{id}/prepared implemented.
 	- Item snapshot (name/price/vat) captured at order creation time.
-	- Tenant and branch isolation enforced. 36 tests passing.
+	- POST /orders/{id}/cancel and POST /orders/{id}/complete actions (OWNER/MANAGER only).
+	- IsWaiterOrAbove permission applied to order create, list, detail, send-to-kitchen, and item endpoints.
+	- order_no auto-incremented per branch, exposed in all order responses.
+	- Tenant and branch isolation enforced. 46 tests passing.
 
 ## 2. Target Tech Stack
 

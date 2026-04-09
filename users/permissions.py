@@ -9,3 +9,15 @@ class IsOwnerOrManager(BasePermission):
             and user.is_authenticated
             and getattr(user, "role", None) in {"OWNER", "MANAGER"}
         )
+
+
+class IsWaiterOrAbove(BasePermission):
+    """Allows WAITER, CASHIER, MANAGER, and OWNER. Excludes KITCHEN."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and getattr(user, "role", None) in {"OWNER", "MANAGER", "CASHIER", "WAITER"}
+        )

@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 
 from core.pagination import StandardResultsSetPagination
 from users.audit import log_activity
-from users.permissions import IsOwnerOrManager
+from users.permissions import IsOwnerOrManager, IsWaiterOrAbove
 
 from .models import KitchenTicket, Order, OrderItem
 from .serializers import (
@@ -18,7 +18,8 @@ from .serializers import (
 
 
 class OrderListCreateView(generics.ListCreateAPIView):
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+    # Waiters and above can list and create orders
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
     pagination_class = StandardResultsSetPagination
 
     def get_serializer_class(self):
@@ -70,7 +71,8 @@ class OrderListCreateView(generics.ListCreateAPIView):
 
 class OrderDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = OrderSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+    # Waiters and above can view/update order fields
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
 
     def get_queryset(self):
         return (
@@ -92,7 +94,8 @@ class OrderDetailView(generics.RetrieveUpdateAPIView):
 
 
 class OrderSendToKitchenView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+    # Waiters and above can fire orders to kitchen
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
 
     def post(self, request, pk):
         try:
@@ -120,7 +123,6 @@ class OrderSendToKitchenView(APIView):
         order.save(update_fields=["status", "updated_at"])
         order.items.filter(status="PENDING").update(status="SENT")
 
-        # Create a kitchen ticket for this order
         KitchenTicket.objects.create(
             tenant=order.tenant,
             branch=order.branch,
@@ -143,8 +145,77 @@ class OrderSendToKitchenView(APIView):
         )
 
 
-class OrderItemAddView(APIView):
+class OrderCancelView(APIView):
+    # Only managers/owners can cancel orders
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.select_related("branch").get(pk=pk, tenant=request.user.tenant)
+        except Order.DoesNotExist:
+            return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.status == Order.Status.CANCELED:
+            return Response({"detail": "Order is already canceled."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if order.status == Order.Status.COMPLETED:
+            return Response({"detail": "Completed orders cannot be canceled."}, status=status.HTTP_400_BAD_REQUEST)
+
+        order.status = Order.Status.CANCELED
+        order.save(update_fields=["status", "updated_at"])
+
+        log_activity(
+            actor_user=request.user,
+            action="order_canceled",
+            entity_type="order",
+            entity_id=str(order.id),
+            tenant=request.user.tenant,
+            branch=order.branch,
+        )
+
+        return Response(
+            OrderSerializer(order, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class OrderCompleteView(APIView):
+    # Only managers/owners can mark orders complete
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.select_related("branch").get(pk=pk, tenant=request.user.tenant)
+        except Order.DoesNotExist:
+            return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.status == Order.Status.CANCELED:
+            return Response({"detail": "Canceled orders cannot be completed."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if order.status == Order.Status.COMPLETED:
+            return Response({"detail": "Order is already completed."}, status=status.HTTP_400_BAD_REQUEST)
+
+        order.status = Order.Status.COMPLETED
+        order.save(update_fields=["status", "updated_at"])
+
+        log_activity(
+            actor_user=request.user,
+            action="order_completed",
+            entity_type="order",
+            entity_id=str(order.id),
+            tenant=request.user.tenant,
+            branch=order.branch,
+        )
+
+        return Response(
+            OrderSerializer(order, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class OrderItemAddView(APIView):
+    # Waiters and above can add items
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
 
     def post(self, request, pk):
         try:
@@ -175,7 +246,8 @@ class OrderItemAddView(APIView):
 
 
 class OrderItemDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+    # Waiters and above can update/delete items
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
 
     def _get_item(self, request, order_pk, item_pk):
         try:

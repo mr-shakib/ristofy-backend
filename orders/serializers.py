@@ -77,6 +77,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "branch",
+            "order_no",
             "table",
             "waiter_user",
             "channel",
@@ -86,7 +87,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "status", "created_at", "updated_at"]
+        read_only_fields = ["id", "order_no", "status", "created_at", "updated_at"]
 
     def validate(self, attrs):
         request = self.context["request"]
@@ -107,7 +108,12 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         items_data = validated_data.pop("items")
-        order = Order.objects.create(tenant=self.context["request"].user.tenant, **validated_data)
+        branch = validated_data["branch"]
+        order = Order.objects.create(
+            tenant=self.context["request"].user.tenant,
+            order_no=Order.next_order_no(branch),
+            **validated_data,
+        )
 
         for item_data in items_data:
             menu_item = item_data.get("menu_item")
@@ -129,6 +135,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "id",
             "tenant",
             "branch",
+            "order_no",
             "table",
             "waiter_user",
             "status",
@@ -138,7 +145,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "tenant", "created_at", "updated_at"]
+        read_only_fields = ["id", "tenant", "order_no", "created_at", "updated_at"]
 
     def validate(self, attrs):
         request = self.context["request"]

@@ -166,6 +166,124 @@ class OrderApiTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
 
+class OrderStatusActionTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Tenant Status")
+        self.branch = Branch.objects.create(tenant=self.tenant, name="Main")
+        self.owner = User.objects.create_user(
+            username="owner_status",
+            password="StrongPass123",
+            role=User.Role.OWNER,
+            tenant=self.tenant,
+            branch=self.branch,
+        )
+        self.waiter = User.objects.create_user(
+            username="waiter_status",
+            password="StrongPass123",
+            role=User.Role.WAITER,
+            tenant=self.tenant,
+            branch=self.branch,
+        )
+        self.category = MenuCategory.objects.create(
+            tenant=self.tenant, branch=self.branch, name="Drinks", sort_order=1
+        )
+        self.menu_item = MenuItem.objects.create(
+            tenant=self.tenant,
+            branch=self.branch,
+            category=self.category,
+            name="Water",
+            base_price="2.00",
+            vat_rate="10.00",
+        )
+
+    def _auth(self, user):
+        access = str(RefreshToken.for_user(user).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    def _create_order(self):
+        self._auth(self.owner)
+        res = self.client.post(
+            "/api/v1/orders",
+            {"branch": self.branch.id, "channel": "DINE_IN", "items": [{"menu_item": self.menu_item.id, "quantity": 1}]},
+            format="json",
+        )
+        return res.data["id"]
+
+    def test_order_no_assigned_on_create(self):
+        self._auth(self.owner)
+        res = self.client.post(
+            "/api/v1/orders",
+            {"branch": self.branch.id, "channel": "DINE_IN", "items": [{"menu_item": self.menu_item.id, "quantity": 1}]},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.data["order_no"], 1)
+
+        res2 = self.client.post(
+            "/api/v1/orders",
+            {"branch": self.branch.id, "channel": "DINE_IN", "items": [{"menu_item": self.menu_item.id, "quantity": 1}]},
+            format="json",
+        )
+        self.assertEqual(res2.data["order_no"], 2)
+
+    def test_cancel_order(self):
+        order_id = self._create_order()
+        res = self.client.post(f"/api/v1/orders/{order_id}/cancel")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["status"], "CANCELED")
+
+    def test_cancel_already_canceled_rejected(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/cancel")
+        res = self.client.post(f"/api/v1/orders/{order_id}/cancel")
+        self.assertEqual(res.status_code, 400)
+
+    def test_cancel_completed_order_rejected(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/complete")
+        res = self.client.post(f"/api/v1/orders/{order_id}/cancel")
+        self.assertEqual(res.status_code, 400)
+
+    def test_complete_order(self):
+        order_id = self._create_order()
+        res = self.client.post(f"/api/v1/orders/{order_id}/complete")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["status"], "COMPLETED")
+
+    def test_complete_already_completed_rejected(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/complete")
+        res = self.client.post(f"/api/v1/orders/{order_id}/complete")
+        self.assertEqual(res.status_code, 400)
+
+    def test_complete_canceled_order_rejected(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/cancel")
+        res = self.client.post(f"/api/v1/orders/{order_id}/complete")
+        self.assertEqual(res.status_code, 400)
+
+    def test_waiter_can_create_order(self):
+        self._auth(self.waiter)
+        res = self.client.post(
+            "/api/v1/orders",
+            {"branch": self.branch.id, "channel": "DINE_IN", "items": [{"menu_item": self.menu_item.id, "quantity": 1}]},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+
+    def test_waiter_cannot_cancel_order(self):
+        order_id = self._create_order()
+        self._auth(self.waiter)
+        res = self.client.post(f"/api/v1/orders/{order_id}/cancel")
+        self.assertEqual(res.status_code, 403)
+
+    def test_waiter_cannot_complete_order(self):
+        order_id = self._create_order()
+        self._auth(self.waiter)
+        res = self.client.post(f"/api/v1/orders/{order_id}/complete")
+        self.assertEqual(res.status_code, 403)
+
+
 class OrderItemSubEndpointTests(APITestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Tenant Items")

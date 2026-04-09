@@ -1,4 +1,5 @@
-from django.db import models
+from django.db import models, transaction
+from django.db.models import Max, Q
 
 
 class Order(models.Model):
@@ -15,6 +16,7 @@ class Order(models.Model):
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="orders")
     branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="orders")
+    order_no = models.PositiveIntegerField(null=True, blank=True)
     table = models.ForeignKey(
         "tables.DiningTable",
         on_delete=models.SET_NULL,
@@ -37,9 +39,24 @@ class Order(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["branch", "order_no"],
+                condition=Q(order_no__isnull=False),
+                name="uniq_order_no_per_branch",
+            )
+        ]
 
     def __str__(self):
-        return f"Order #{self.pk} [{self.status}] — {self.branch.name}"
+        return f"Order #{self.order_no or self.pk} [{self.status}] — {self.branch.name}"
+
+    @classmethod
+    def next_order_no(cls, branch):
+        """Return the next sequential order_no for the given branch (safe under concurrent writes)."""
+        with transaction.atomic():
+            result = cls.objects.select_for_update().filter(branch=branch).aggregate(Max("order_no"))
+            current_max = result["order_no__max"] or 0
+            return current_max + 1
 
 
 class OrderItem(models.Model):
