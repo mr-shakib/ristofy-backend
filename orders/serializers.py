@@ -1,8 +1,6 @@
 from rest_framework import serializers
 
-from menu.models import MenuItem
-
-from .models import Order, OrderItem
+from .models import KitchenTicket, Order, OrderItem
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -26,6 +24,49 @@ class OrderItemSerializer(serializers.ModelSerializer):
         if value < 1:
             raise serializers.ValidationError("Quantity must be at least 1.")
         return value
+
+
+class OrderItemAddSerializer(serializers.ModelSerializer):
+    """Used for POST /orders/{id}/items — adds a new item to an existing order."""
+
+    class Meta:
+        model = OrderItem
+        fields = ["id", "menu_item", "item_name", "unit_price", "vat_rate", "quantity", "notes", "status", "created_at", "updated_at"]
+        read_only_fields = ["id", "item_name", "unit_price", "vat_rate", "status", "created_at", "updated_at"]
+
+    def validate_quantity(self, value):
+        if value < 1:
+            raise serializers.ValidationError("Quantity must be at least 1.")
+        return value
+
+    def create(self, validated_data):
+        menu_item = validated_data.get("menu_item")
+        if menu_item:
+            validated_data.setdefault("item_name", menu_item.name)
+            validated_data.setdefault("unit_price", menu_item.base_price)
+            validated_data.setdefault("vat_rate", menu_item.vat_rate)
+        return OrderItem.objects.create(**validated_data)
+
+
+class OrderItemUpdateSerializer(serializers.ModelSerializer):
+    """Used for PATCH /orders/{id}/items/{item_id} — only mutable fields."""
+
+    class Meta:
+        model = OrderItem
+        fields = ["id", "quantity", "notes", "status", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_quantity(self, value):
+        if value < 1:
+            raise serializers.ValidationError("Quantity must be at least 1.")
+        return value
+
+
+class KitchenTicketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KitchenTicket
+        fields = ["id", "tenant", "branch", "order", "status", "created_at", "updated_at"]
+        read_only_fields = ["id", "tenant", "branch", "order", "created_at", "updated_at"]
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):

@@ -72,3 +72,22 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.item_name} x{self.quantity} (Order #{self.order_id})"
+
+
+class KitchenTicket(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        PREPARED = "PREPARED", "Prepared"
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="kitchen_tickets")
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="kitchen_tickets")
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="kitchen_tickets")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"Ticket #{self.pk} Order #{self.order_id} [{self.status}]"

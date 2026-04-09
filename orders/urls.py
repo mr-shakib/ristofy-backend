@@ -1,9 +1,21 @@
 from django.urls import path
 
-from .views import OrderDetailView, OrderListCreateView, OrderSendToKitchenView
+from .views import (
+    KitchenTicketListView,
+    KitchenTicketPreparedView,
+    OrderDetailView,
+    OrderItemAddView,
+    OrderItemDetailView,
+    OrderListCreateView,
+    OrderSendToKitchenView,
+)
 
 urlpatterns = [
     path("orders", OrderListCreateView.as_view(), name="order-list-create"),
     path("orders/<int:pk>", OrderDetailView.as_view(), name="order-detail"),
     path("orders/<int:pk>/send-to-kitchen", OrderSendToKitchenView.as_view(), name="order-send-to-kitchen"),
+    path("orders/<int:pk>/items", OrderItemAddView.as_view(), name="order-item-add"),
+    path("orders/<int:pk>/items/<int:item_pk>", OrderItemDetailView.as_view(), name="order-item-detail"),
+    path("kitchen/tickets", KitchenTicketListView.as_view(), name="kitchen-ticket-list"),
+    path("kitchen/tickets/<int:pk>/prepared", KitchenTicketPreparedView.as_view(), name="kitchen-ticket-prepared"),
 ]

@@ -1195,6 +1195,100 @@ Common errors:
 - 400 when order is already CANCELED or COMPLETED
 - 404 when order not found in caller's tenant
 
+## 3.24 Order Item Sub-endpoints (Phase 3 Slice 2)
+
+### Add Item to Existing Order
+
+- Method: POST
+- URL: {{base_url}}/orders/{{order_id}}/items
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "menu_item": 1,
+  "quantity": 2,
+  "notes": "No onions"
+}
+```
+
+Success response (201): OrderItem object with snapshot fields populated from menu item.
+
+Common errors:
+- 400 when order is CANCELED
+- 404 when order not found in caller's tenant
+
+### Update Order Item
+
+- Method: PATCH
+- URL: {{base_url}}/orders/{{order_id}}/items/{{item_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+Request body (all fields optional):
+
+```json
+{
+  "quantity": 3,
+  "notes": "Extra sauce",
+  "status": "SERVED"
+}
+```
+
+Success response (200): full OrderItem object.
+
+### Delete Order Item
+
+- Method: DELETE
+- URL: {{base_url}}/orders/{{order_id}}/items/{{item_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+Success response: 204 No Content.
+
+## 3.25 Kitchen Tickets (Phase 3 Slice 2)
+
+A `KitchenTicket` is auto-created when `send-to-kitchen` is called on an order.
+
+### List Kitchen Tickets
+
+- Method: GET
+- URL: {{base_url}}/kitchen/tickets
+- Auth: Yes (OWNER or MANAGER)
+
+Supported filters:
+- `branch` — filter by branch ID
+- `status` — PENDING | PREPARED
+
+Paginated response shape (same as other list endpoints).
+
+Success response results item:
+
+```json
+{
+  "id": 1,
+  "tenant": 10,
+  "branch": 20,
+  "order": 1,
+  "status": "PENDING",
+  "created_at": "2026-04-09T10:05:00.000000Z",
+  "updated_at": "2026-04-09T10:05:00.000000Z"
+}
+```
+
+### Mark Ticket Prepared
+
+- Method: POST
+- URL: {{base_url}}/kitchen/tickets/{{ticket_id}}/prepared
+- Auth: Yes (OWNER or MANAGER)
+
+No request body. Transitions ticket status from `PENDING` to `PREPARED`.
+
+Success response (200): full KitchenTicket object with `status: "PREPARED"`.
+
+Common errors:
+- 400 when ticket is already PREPARED
+- 404 when ticket not found in caller's tenant
+
 ## 4. Postman Tests Script Snippets
 
 Add this to login and register requests Tests tab to store tokens:

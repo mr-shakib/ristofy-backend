@@ -164,3 +164,215 @@ class OrderApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class OrderItemSubEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Tenant Items")
+        self.branch = Branch.objects.create(tenant=self.tenant, name="Main")
+        self.owner = User.objects.create_user(
+            username="owner_items",
+            password="StrongPass123",
+            role=User.Role.OWNER,
+            tenant=self.tenant,
+            branch=self.branch,
+        )
+        self.category = MenuCategory.objects.create(
+            tenant=self.tenant, branch=self.branch, name="Pasta", sort_order=1
+        )
+        self.menu_item = MenuItem.objects.create(
+            tenant=self.tenant,
+            branch=self.branch,
+            category=self.category,
+            name="Carbonara",
+            base_price="12.00",
+            vat_rate="10.00",
+        )
+        self.menu_item2 = MenuItem.objects.create(
+            tenant=self.tenant,
+            branch=self.branch,
+            category=self.category,
+            name="Amatriciana",
+            base_price="11.00",
+            vat_rate="10.00",
+        )
+
+    def _auth(self):
+        access = str(RefreshToken.for_user(self.owner).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    def _create_order(self):
+        self._auth()
+        res = self.client.post(
+            "/api/v1/orders",
+            {
+                "branch": self.branch.id,
+                "channel": "DINE_IN",
+                "items": [{"menu_item": self.menu_item.id, "quantity": 1}],
+            },
+            format="json",
+        )
+        return res.data["id"]
+
+    def test_add_item_to_order(self):
+        order_id = self._create_order()
+        res = self.client.post(
+            f"/api/v1/orders/{order_id}/items",
+            {"menu_item": self.menu_item2.id, "quantity": 3},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data["item_name"], "Amatriciana")
+        self.assertEqual(res.data["quantity"], 3)
+        self.assertEqual(str(res.data["unit_price"]), "11.00")
+
+        # Order should now have 2 items
+        detail = self.client.get(f"/api/v1/orders/{order_id}")
+        self.assertEqual(len(detail.data["items"]), 2)
+
+    def test_add_item_to_canceled_order_rejected(self):
+        order_id = self._create_order()
+        self.client.patch(f"/api/v1/orders/{order_id}", {"status": "CANCELED"}, format="json")
+        res = self.client.post(
+            f"/api/v1/orders/{order_id}/items",
+            {"menu_item": self.menu_item2.id, "quantity": 1},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_update_item_quantity_and_notes(self):
+        order_id = self._create_order()
+        detail = self.client.get(f"/api/v1/orders/{order_id}")
+        item_id = detail.data["items"][0]["id"]
+
+        res = self.client.patch(
+            f"/api/v1/orders/{order_id}/items/{item_id}",
+            {"quantity": 5, "notes": "Extra sauce"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["quantity"], 5)
+        self.assertEqual(res.data["notes"], "Extra sauce")
+
+    def test_delete_item(self):
+        order_id = self._create_order()
+        detail = self.client.get(f"/api/v1/orders/{order_id}")
+        item_id = detail.data["items"][0]["id"]
+
+        res = self.client.delete(f"/api/v1/orders/{order_id}/items/{item_id}")
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+
+        detail = self.client.get(f"/api/v1/orders/{order_id}")
+        self.assertEqual(len(detail.data["items"]), 0)
+
+    def test_item_from_other_order_not_accessible(self):
+        order_id = self._create_order()
+        # Create a second order
+        order2_res = self.client.post(
+            "/api/v1/orders",
+            {"branch": self.branch.id, "channel": "DINE_IN", "items": [{"menu_item": self.menu_item.id, "quantity": 1}]},
+            format="json",
+        )
+        item_from_order2 = order2_res.data["items"][0]["id"]
+
+        # Try to PATCH item from order2 via order1's URL
+        res = self.client.patch(
+            f"/api/v1/orders/{order_id}/items/{item_from_order2}",
+            {"quantity": 99},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class KitchenTicketTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Tenant Kitchen")
+        self.branch = Branch.objects.create(tenant=self.tenant, name="Main")
+        self.owner = User.objects.create_user(
+            username="owner_kitchen",
+            password="StrongPass123",
+            role=User.Role.OWNER,
+            tenant=self.tenant,
+            branch=self.branch,
+        )
+        self.category = MenuCategory.objects.create(
+            tenant=self.tenant, branch=self.branch, name="Grill", sort_order=1
+        )
+        self.menu_item = MenuItem.objects.create(
+            tenant=self.tenant,
+            branch=self.branch,
+            category=self.category,
+            name="Bistecca",
+            base_price="25.00",
+            vat_rate="10.00",
+        )
+
+        self.other_tenant = Tenant.objects.create(name="Other Kitchen Tenant")
+        self.other_branch = Branch.objects.create(tenant=self.other_tenant, name="Other")
+        self.other_user = User.objects.create_user(
+            username="owner_kitchen_other",
+            password="StrongPass123",
+            role=User.Role.OWNER,
+            tenant=self.other_tenant,
+            branch=self.other_branch,
+        )
+
+    def _auth(self, user=None):
+        user = user or self.owner
+        access = str(RefreshToken.for_user(user).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    def _create_and_send_order(self):
+        res = self.client.post(
+            "/api/v1/orders",
+            {"branch": self.branch.id, "channel": "DINE_IN", "items": [{"menu_item": self.menu_item.id, "quantity": 1}]},
+            format="json",
+        )
+        order_id = res.data["id"]
+        self.client.post(f"/api/v1/orders/{order_id}/send-to-kitchen")
+        return order_id
+
+    def test_send_to_kitchen_creates_ticket(self):
+        self._auth()
+        self._create_and_send_order()
+        res = self.client.get("/api/v1/kitchen/tickets")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["count"], 1)
+        self.assertEqual(res.data["results"][0]["status"], "PENDING")
+
+    def test_filter_tickets_by_status(self):
+        self._auth()
+        self._create_and_send_order()
+        res = self.client.get("/api/v1/kitchen/tickets?status=PENDING")
+        self.assertEqual(res.data["count"], 1)
+
+        res = self.client.get("/api/v1/kitchen/tickets?status=PREPARED")
+        self.assertEqual(res.data["count"], 0)
+
+    def test_mark_ticket_prepared(self):
+        self._auth()
+        self._create_and_send_order()
+        tickets = self.client.get("/api/v1/kitchen/tickets")
+        ticket_id = tickets.data["results"][0]["id"]
+
+        res = self.client.post(f"/api/v1/kitchen/tickets/{ticket_id}/prepared")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["status"], "PREPARED")
+
+    def test_mark_prepared_twice_rejected(self):
+        self._auth()
+        self._create_and_send_order()
+        tickets = self.client.get("/api/v1/kitchen/tickets")
+        ticket_id = tickets.data["results"][0]["id"]
+
+        self.client.post(f"/api/v1/kitchen/tickets/{ticket_id}/prepared")
+        res = self.client.post(f"/api/v1/kitchen/tickets/{ticket_id}/prepared")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_kitchen_tickets_tenant_isolation(self):
+        self._auth(self.owner)
+        self._create_and_send_order()
+
+        self._auth(self.other_user)
+        res = self.client.get("/api/v1/kitchen/tickets")
+        self.assertEqual(res.data["count"], 0)
