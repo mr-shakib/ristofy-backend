@@ -1543,7 +1543,7 @@ Success response:
 }
 ```
 
-## 3.31 Billing (Phase 5 Step A - Implemented)
+## 3.31 Billing (Phase 5 Step A-D - Implemented)
 
 ### Create Bill from Order
 
@@ -1621,12 +1621,98 @@ Tenant isolation:
 
 - Returns 404 when bill does not belong to caller tenant.
 
-### Next Phase 5 Endpoints (Pending)
+### Apply Coperto
 
-- POST {{base_url}}/bills/{{bill_id}}/apply-coperto
-- POST {{base_url}}/bills/{{bill_id}}/apply-discount
-- POST {{base_url}}/bills/{{bill_id}}/finalize
-- POST {{base_url}}/bills/{{bill_id}}/pay
+- Method: POST
+- URL: {{base_url}}/bills/{{bill_id}}/apply-coperto
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "amount": "2.00",
+  "covers": 4
+}
+```
+
+Behavior:
+
+- Adds a `COPERTO` line (`amount * covers`).
+- Recalculates bill totals.
+- Allowed only when bill is `DRAFT`.
+
+### Apply Discount
+
+- Method: POST
+- URL: {{base_url}}/bills/{{bill_id}}/apply-discount
+- Auth: Yes (OWNER or MANAGER)
+
+Request body (PERCENT):
+
+```json
+{
+  "type": "PERCENT",
+  "value": "10.00"
+}
+```
+
+Request body (FIXED):
+
+```json
+{
+  "type": "FIXED",
+  "value": "5.00"
+}
+```
+
+Behavior:
+
+- Adds a `DISCOUNT` line.
+- For `PERCENT`, applies discount to current payable amount.
+- Caps discount to avoid negative totals.
+- Allowed only when bill is `DRAFT`.
+
+### Finalize Bill
+
+- Method: POST
+- URL: {{base_url}}/bills/{{bill_id}}/finalize
+- Auth: Yes (OWNER or MANAGER)
+
+No request body.
+
+Behavior:
+
+- Transitions bill `DRAFT -> FINALIZED`.
+- Once finalized, bill modifications are rejected.
+
+### Record Payment
+
+- Method: POST
+- URL: {{base_url}}/bills/{{bill_id}}/pay
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "method": "CASH",
+  "amount": "20.00",
+  "reference": "POS-1"
+}
+```
+
+Behavior:
+
+- Records a payment row.
+- Requires bill to be `FINALIZED`.
+- When cumulative `amount_paid >= grand_total`, bill transitions to `PAID`.
+
+Common action errors:
+
+- 400 when modifying a non-draft bill (`apply-coperto`, `apply-discount`, `finalize`)
+- 400 when paying a draft bill
+- 400 when paying an already paid bill
 
 ## 5. Common Troubleshooting
 

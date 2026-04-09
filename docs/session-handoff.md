@@ -17,19 +17,22 @@ See docs/backend-roadmap.md for full detail. Summary:
 - **Analytics**: GET /buffet/analytics — sessions, adults, kids, waste totals; filterable by branch + date.
 - 98 tests passing (32 new).
 
-### Phase 5 (In Progress — Step A completed)
+### Phase 5 (In Progress — Step A-D completed)
 - **Bill model** implemented: tenant, branch, order, bill_no (sequential per branch), status, totals fields.
 - **BillLine model** implemented: source_type, source_id, description, quantity, unit_price, vat_rate, line_total.
 - **Create from order** implemented: POST `/api/v1/bills/create-from-order` (auto-builds ORDER_ITEM lines from non-canceled items).
 - **Bill detail** implemented: GET `/api/v1/bills/{id}`.
 - **Routing** implemented: billing URLs included in core API routing.
 - **Tests added** for success flow, totals, duplicate bill rejection, permissions, and tenant isolation.
-- **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test billing`, and full `manage.py test` passed (106 tests total).
+- **Step C/D implemented**: apply-coperto, apply-discount, finalize, and pay endpoints.
+- **Payment model implemented**: method, amount, reference, paid_at; bill moves to `PAID` when cumulative payments cover `grand_total`.
+- **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test billing`, and full `manage.py test` passed (114 tests total).
 
 ## 2) New Migrations
 
 - orders/migrations/0005_buffetplan_buffetsession_wastelog_buffetround.py
 - billing/migrations/0001_initial.py
+- billing/migrations/0002_payment.py
 
 ## 3) Phase 4 API Surface
 
@@ -50,30 +53,21 @@ For payloads, see docs/api-postman-guide.md §3.27–3.30.
 - JWT HMAC key warning in tests (env SECRET_KEY < 32 chars, not a code issue).
 - publish_order_event() stubs to logs — wire to Redis when dispatcher is ready.
 - PrintJob stays QUEUED — Go bridge integration is Phase 6.
-- Phase 5 Step C/D still pending: coperto, discount, finalize, payment.
 - Default project `.venv` is Python 3.11 (incompatible with pinned Django 6.0.4); local validation was executed using a Python 3.14 virtualenv.
 
-## 5) Where To Start Next (Phase 5 — Billing Engine)
+## 5) Where To Start Next (Phase 6 — Fiscal Integration)
 
-### Step B: Completed
-- BillLine model and ORDER_ITEM line creation are implemented.
+### Step A-D: Completed
+- Bill + BillLine + create-from-order + bill detail are implemented.
+- apply-coperto, apply-discount, finalize, and pay are implemented.
+- Payment model is implemented.
+- Billing tests and docs are updated.
 
-### Step C: Bill actions (Next)
-- POST /api/v1/bills/{id}/apply-coperto  — body: `{"amount": "2.00", "covers": 4}`
-- POST /api/v1/bills/{id}/apply-discount — body: `{"type": "PERCENT"|"FIXED", "value": "10.00"}`
-- POST /api/v1/bills/{id}/finalize — transitions DRAFT → FINALIZED, locks lines
-
-### Step D: Payment model + record payment
-- Fields: bill, method (CASH/CARD/OTHER), amount, reference, paid_at
-- POST /api/v1/bills/{id}/pay — body: `{"method": "CASH", "amount": "50.00"}`
-- Transitions bill to PAID when amount_paid >= grand_total
-
-### Step E: Tests and docs
-- Completed for Step A in this session:
-	- docs/api-postman-guide.md updated with implemented billing Step A endpoints
-	- docs/backend-roadmap.md updated with Phase 5 in-progress status
-	- docs/session-handoff.md updated with this handoff
-- Remaining tests/docs for Step C/D will be added when those endpoints are implemented.
+### Next Priority (Phase 6)
+- Start fiscal integration scaffolding:
+	- fiscal command model/lifecycle
+	- bridge callback endpoints
+	- receipt issue/reprint/refund workflow
 
 ## 6) Next Session Quick Commands
 
@@ -93,7 +87,7 @@ Note: for this repository's pinned Django 6.0.4, use Python 3.12+.
 
 ## 7) Copy-Paste Prompt For Next Session
 
-"Continue from docs/session-handoff.md. Phase 5 Step A is complete (Bill/BillLine + create-from-order + bill detail). Implement Step C and D: apply-coperto, apply-discount, finalize, and pay endpoints with strict tenant/branch isolation. Add tests and docs updates. Run check + makemigrations --check --dry-run + tests and report changed files and endpoint list."
+"Continue from docs/session-handoff.md. Phase 5 billing core (Step A-D) is complete. Start Phase 6 fiscal integration scaffolding: add fiscal transaction models, receipt lifecycle endpoints, and bridge callback endpoints with strict tenant/branch isolation. Add tests and docs updates. Run check + makemigrations --check --dry-run + tests and report changed files and endpoint list."
 
 ## 8) Definition Of Done For Phase 5
 
@@ -105,6 +99,7 @@ Note: for this repository's pinned Django 6.0.4, use Python 3.12+.
 ## 9) Audit Notes (2026-04-10)
 
 - Verified in code: billing Step A endpoints are routed and implemented.
-- Verified migration added: billing/migrations/0001_initial.py.
+- Verified in code: billing Step C/D action endpoints and payment workflow are implemented.
+- Verified migrations added: billing/migrations/0001_initial.py and billing/migrations/0002_payment.py.
 - Known local environment issue: Python 3.11 is incompatible with pinned Django 6.0.4.
-- Next implementation priority: Phase 5 Step C and D.
+- Next implementation priority: Phase 6 fiscal integration scaffolding.

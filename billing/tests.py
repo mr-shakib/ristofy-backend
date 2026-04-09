@@ -183,3 +183,121 @@ class BillingApiTests(APITestCase):
 
         create_res = self.client.post("/api/v1/bills/create-from-order", {"order": order.id}, format="json")
         self.assertEqual(create_res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def _create_bill(self):
+        self._auth(self.owner)
+        order = self._create_order()
+        res = self.client.post("/api/v1/bills/create-from-order", {"order": order.id}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        return res.data["id"]
+
+    def test_apply_coperto(self):
+        bill_id = self._create_bill()
+
+        res = self.client.post(
+            f"/api/v1/bills/{bill_id}/apply-coperto",
+            {"amount": "2.00", "covers": 4},
+            format="json",
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(str(res.data["coperto_total"]), "8.00")
+        self.assertEqual(str(res.data["grand_total"]), "46.60")
+        self.assertEqual(len(res.data["lines"]), 3)
+
+    def test_apply_discount_percent(self):
+        bill_id = self._create_bill()
+
+        res = self.client.post(
+            f"/api/v1/bills/{bill_id}/apply-discount",
+            {"type": "PERCENT", "value": "10.00"},
+            format="json",
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(str(res.data["discount_total"]), "3.86")
+        self.assertEqual(str(res.data["grand_total"]), "34.74")
+
+    def test_finalize_bill(self):
+        bill_id = self._create_bill()
+
+        res = self.client.post(f"/api/v1/bills/{bill_id}/finalize")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["status"], "FINALIZED")
+
+    def test_cannot_modify_after_finalize(self):
+        bill_id = self._create_bill()
+        self.client.post(f"/api/v1/bills/{bill_id}/finalize")
+
+        coperto_res = self.client.post(
+            f"/api/v1/bills/{bill_id}/apply-coperto",
+            {"amount": "2.00", "covers": 4},
+            format="json",
+        )
+        discount_res = self.client.post(
+            f"/api/v1/bills/{bill_id}/apply-discount",
+            {"type": "FIXED", "value": "5.00"},
+            format="json",
+        )
+
+        self.assertEqual(coperto_res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(discount_res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_pay_requires_finalize(self):
+        bill_id = self._create_bill()
+
+        res = self.client.post(
+            f"/api/v1/bills/{bill_id}/pay",
+            {"method": "CASH", "amount": "10.00"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_pay_marks_bill_paid_when_fully_covered(self):
+        bill_id = self._create_bill()
+        self.client.post(f"/api/v1/bills/{bill_id}/finalize")
+
+        part = self.client.post(
+            f"/api/v1/bills/{bill_id}/pay",
+            {"method": "CARD", "amount": "20.00", "reference": "POS-1"},
+            format="json",
+        )
+        self.assertEqual(part.status_code, status.HTTP_200_OK)
+        self.assertEqual(part.data["status"], "FINALIZED")
+        self.assertEqual(str(part.data["amount_paid"]), "20.00")
+
+        final = self.client.post(
+            f"/api/v1/bills/{bill_id}/pay",
+            {"method": "CASH", "amount": "18.60"},
+            format="json",
+        )
+        self.assertEqual(final.status_code, status.HTTP_200_OK)
+        self.assertEqual(final.data["status"], "PAID")
+        self.assertEqual(str(final.data["amount_paid"]), "38.60")
+        self.assertEqual(len(final.data["payments"]), 2)
+
+    def test_pay_on_paid_bill_rejected(self):
+        bill_id = self._create_bill()
+        self.client.post(f"/api/v1/bills/{bill_id}/finalize")
+        self.client.post(
+            f"/api/v1/bills/{bill_id}/pay",
+            {"method": "CASH", "amount": "38.60"},
+            format="json",
+        )
+
+        res = self.client.post(
+            f"/api/v1/bills/{bill_id}/pay",
+            {"method": "CASH", "amount": "1.00"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_waiter_forbidden_on_actions(self):
+        bill_id = self._create_bill()
+
+        self._auth(self.waiter)
+        res = self.client.post(
+            f"/api/v1/bills/{bill_id}/finalize",
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
