@@ -1543,6 +1543,91 @@ Success response:
 }
 ```
 
+## 3.31 Billing (Phase 5 Step A - Implemented)
+
+### Create Bill from Order
+
+- Method: POST
+- URL: {{base_url}}/bills/create-from-order
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "order": 5
+}
+```
+
+Behavior:
+
+- Creates one `Bill` per order (duplicate creation is rejected).
+- Builds `BillLine` rows from non-canceled order items.
+- Captures totals:
+  - `subtotal`: sum of line totals
+  - `vat_total`: sum of VAT per line (`line_total * vat_rate / 100`)
+  - `grand_total`: `subtotal + vat_total + coperto_total + service_charge_total + waste_total - discount_total`
+
+Success response (201):
+
+```json
+{
+  "id": 1,
+  "tenant": 10,
+  "branch": 20,
+  "order": 5,
+  "bill_no": 1,
+  "status": "DRAFT",
+  "subtotal": "34.00",
+  "vat_total": "4.60",
+  "coperto_total": "0.00",
+  "service_charge_total": "0.00",
+  "waste_total": "0.00",
+  "discount_total": "0.00",
+  "grand_total": "38.60",
+  "lines": [
+    {
+      "id": 1,
+      "source_type": "ORDER_ITEM",
+      "source_id": "11",
+      "description": "Carbonara",
+      "quantity": "2.00",
+      "unit_price": "12.00",
+      "vat_rate": "10.00",
+      "line_total": "24.00",
+      "created_at": "2026-04-10T10:00:00.000000Z"
+    }
+  ],
+  "created_at": "2026-04-10T10:00:00.000000Z",
+  "updated_at": "2026-04-10T10:00:00.000000Z"
+}
+```
+
+Common errors:
+
+- 400 when the order is outside your tenant
+- 400 when a bill already exists for the order
+- 403 when caller role is not OWNER/MANAGER
+
+### Get Bill Detail
+
+- Method: GET
+- URL: {{base_url}}/bills/{{bill_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+Success response (200): same shape as create response.
+
+Tenant isolation:
+
+- Returns 404 when bill does not belong to caller tenant.
+
+### Next Phase 5 Endpoints (Pending)
+
+- POST {{base_url}}/bills/{{bill_id}}/apply-coperto
+- POST {{base_url}}/bills/{{bill_id}}/apply-discount
+- POST {{base_url}}/bills/{{bill_id}}/finalize
+- POST {{base_url}}/bills/{{bill_id}}/pay
+
 ## 5. Common Troubleshooting
 
 - 401 Unauthorized:
