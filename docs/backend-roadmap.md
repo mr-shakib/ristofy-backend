@@ -26,16 +26,20 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Menu and dining layout foundations are implemented with CRUD endpoints for categories, items, floor plans, tables, reservations, and waitlist.
 	- Allergen catalog, item-allergen mapping, and menu schedule windows are implemented.
 	- Reservation and waitlist status actions are implemented with automatic table-state sync.
-- Phase 3: In progress (Slice 3 complete)
+- Phase 3: Completed
 	- Order and OrderItem models implemented with full status lifecycle.
 	- POST/GET /api/v1/orders, GET/PATCH /api/v1/orders/{id}, POST /api/v1/orders/{id}/send-to-kitchen implemented.
 	- POST /api/v1/orders/{id}/items, PATCH/DELETE /api/v1/orders/{id}/items/{item_id} implemented.
 	- KitchenTicket model: auto-created on send-to-kitchen; GET /api/v1/kitchen/tickets, POST /api/v1/kitchen/tickets/{id}/prepared implemented.
 	- Item snapshot (name/price/vat) captured at order creation time.
 	- POST /orders/{id}/cancel and POST /orders/{id}/complete actions (OWNER/MANAGER only).
-	- IsWaiterOrAbove permission applied to order create, list, detail, send-to-kitchen, and item endpoints.
-	- order_no auto-incremented per branch, exposed in all order responses.
-	- Tenant and branch isolation enforced. 46 tests passing.
+	- POST /orders/{id}/hold, /fire, /course/fire, /call-waiter, /request-bill implemented.
+	- course field on OrderItem (STARTER, MAIN, DESSERT, DRINK, OTHER); one KitchenTicket per course on fire.
+	- IsWaiterOrAbove permission applied to order create, list, detail, fire, and item endpoints.
+	- order_no auto-incremented per branch with select_for_update concurrency safety.
+	- Printer and PrintJob models in printers app; PrintJob queued per KitchenTicket on fire.
+	- events.py stub publishes structured order events (Redis-ready, logs for now).
+	- Tenant and branch isolation enforced. 66 tests passing.
 
 ## 2. Target Tech Stack
 

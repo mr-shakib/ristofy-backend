@@ -4,6 +4,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from menu.models import MenuCategory, MenuItem
+from tables.models import DiningTable, FloorPlan
 from tenants.models import Branch, Tenant
 
 User = get_user_model()
@@ -494,3 +495,248 @@ class KitchenTicketTests(APITestCase):
         self._auth(self.other_user)
         res = self.client.get("/api/v1/kitchen/tickets")
         self.assertEqual(res.data["count"], 0)
+
+
+class OrderPhase3CompleteTests(APITestCase):
+    """Tests for hold, fire, course/fire, call-waiter, request-bill, course field, and printer routing."""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Tenant Phase3")
+        self.branch = Branch.objects.create(tenant=self.tenant, name="Main")
+        self.owner = User.objects.create_user(
+            username="owner_p3",
+            password="StrongPass123",
+            role=User.Role.OWNER,
+            tenant=self.tenant,
+            branch=self.branch,
+        )
+        self.waiter = User.objects.create_user(
+            username="waiter_p3",
+            password="StrongPass123",
+            role=User.Role.WAITER,
+            tenant=self.tenant,
+            branch=self.branch,
+        )
+        self.category = MenuCategory.objects.create(
+            tenant=self.tenant, branch=self.branch, name="Italian", sort_order=1
+        )
+        self.starter = MenuItem.objects.create(
+            tenant=self.tenant, branch=self.branch, category=self.category,
+            name="Bruschetta", base_price="5.00", vat_rate="10.00",
+        )
+        self.main = MenuItem.objects.create(
+            tenant=self.tenant, branch=self.branch, category=self.category,
+            name="Lasagne", base_price="14.00", vat_rate="10.00",
+        )
+        # Floor plan and table for request-bill tests
+        self.floor_plan = FloorPlan.objects.create(branch=self.branch, name="Hall")
+        self.table = DiningTable.objects.create(
+            branch=self.branch, floor_plan=self.floor_plan, code="T1", seats=4,
+        )
+
+    def _auth(self, user=None):
+        user = user or self.owner
+        access = str(RefreshToken.for_user(user).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    def _create_order(self, items=None):
+        self._auth()
+        payload = {
+            "branch": self.branch.id,
+            "channel": "DINE_IN",
+            "items": items or [
+                {"menu_item": self.starter.id, "quantity": 1, "course": "STARTER"},
+                {"menu_item": self.main.id, "quantity": 2, "course": "MAIN"},
+            ],
+        }
+        res = self.client.post("/api/v1/orders", payload, format="json")
+        self.assertEqual(res.status_code, 201)
+        return res.data["id"]
+
+    # ── course field ──────────────────────────────────────────────────────────
+
+    def test_item_course_field_stored_and_returned(self):
+        order_id = self._create_order()
+        res = self.client.get(f"/api/v1/orders/{order_id}")
+        courses = {item["course"] for item in res.data["items"]}
+        self.assertEqual(courses, {"STARTER", "MAIN"})
+
+    def test_item_course_defaults_to_main(self):
+        self._auth()
+        res = self.client.post(
+            "/api/v1/orders",
+            {"branch": self.branch.id, "channel": "DINE_IN",
+             "items": [{"menu_item": self.starter.id, "quantity": 1}]},
+            format="json",
+        )
+        self.assertEqual(res.data["items"][0]["course"], "MAIN")
+
+    # ── hold ──────────────────────────────────────────────────────────────────
+
+    def test_hold_order(self):
+        order_id = self._create_order()
+        res = self.client.post(f"/api/v1/orders/{order_id}/hold")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["status"], "HELD")
+
+    def test_hold_already_held_rejected(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/hold")
+        res = self.client.post(f"/api/v1/orders/{order_id}/hold")
+        self.assertEqual(res.status_code, 400)
+
+    def test_hold_canceled_order_rejected(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/cancel")
+        res = self.client.post(f"/api/v1/orders/{order_id}/hold")
+        self.assertEqual(res.status_code, 400)
+
+    def test_waiter_can_hold_order(self):
+        order_id = self._create_order()
+        self._auth(self.waiter)
+        res = self.client.post(f"/api/v1/orders/{order_id}/hold")
+        self.assertEqual(res.status_code, 200)
+
+    # ── fire ──────────────────────────────────────────────────────────────────
+
+    def test_fire_order_creates_per_course_tickets(self):
+        order_id = self._create_order()
+        res = self.client.post(f"/api/v1/orders/{order_id}/fire")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["status"], "SENT_TO_KITCHEN")
+        # All items should now be SENT
+        for item in res.data["items"]:
+            self.assertEqual(item["status"], "SENT")
+
+        # Should have one ticket per course (STARTER + MAIN = 2)
+        tickets = self.client.get("/api/v1/kitchen/tickets")
+        self.assertEqual(tickets.data["count"], 2)
+        ticket_courses = {t["course"] for t in tickets.data["results"]}
+        self.assertEqual(ticket_courses, {"STARTER", "MAIN"})
+
+    def test_fire_held_order(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/hold")
+        res = self.client.post(f"/api/v1/orders/{order_id}/fire")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["status"], "SENT_TO_KITCHEN")
+
+    def test_fire_with_no_pending_items_rejected(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/fire")  # fire once
+        res = self.client.post(f"/api/v1/orders/{order_id}/fire")  # nothing pending
+        self.assertEqual(res.status_code, 400)
+
+    def test_fire_canceled_order_rejected(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/cancel")
+        res = self.client.post(f"/api/v1/orders/{order_id}/fire")
+        self.assertEqual(res.status_code, 400)
+
+    # ── course/fire ───────────────────────────────────────────────────────────
+
+    def test_course_fire_only_fires_specified_course(self):
+        order_id = self._create_order()
+        res = self.client.post(
+            f"/api/v1/orders/{order_id}/course/fire",
+            {"course": "STARTER"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+
+        detail = self.client.get(f"/api/v1/orders/{order_id}")
+        statuses = {item["course"]: item["status"] for item in detail.data["items"]}
+        self.assertEqual(statuses["STARTER"], "SENT")
+        self.assertEqual(statuses["MAIN"], "PENDING")  # not fired yet
+
+    def test_course_fire_creates_one_ticket_for_course(self):
+        order_id = self._create_order()
+        self.client.post(
+            f"/api/v1/orders/{order_id}/course/fire",
+            {"course": "MAIN"},
+            format="json",
+        )
+        tickets = self.client.get("/api/v1/kitchen/tickets")
+        self.assertEqual(tickets.data["count"], 1)
+        self.assertEqual(tickets.data["results"][0]["course"], "MAIN")
+
+    def test_course_fire_invalid_course_rejected(self):
+        order_id = self._create_order()
+        res = self.client.post(
+            f"/api/v1/orders/{order_id}/course/fire",
+            {"course": "INVALID"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_course_fire_no_pending_items_for_course_rejected(self):
+        order_id = self._create_order()
+        self.client.post(
+            f"/api/v1/orders/{order_id}/course/fire",
+            {"course": "STARTER"},
+            format="json",
+        )
+        # Fire STARTER again — should be rejected
+        res = self.client.post(
+            f"/api/v1/orders/{order_id}/course/fire",
+            {"course": "STARTER"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    # ── call-waiter ───────────────────────────────────────────────────────────
+
+    def test_call_waiter(self):
+        order_id = self._create_order()
+        res = self.client.post(f"/api/v1/orders/{order_id}/call-waiter")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("detail", res.data)
+
+    def test_call_waiter_on_completed_order_rejected(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/complete")
+        res = self.client.post(f"/api/v1/orders/{order_id}/call-waiter")
+        self.assertEqual(res.status_code, 400)
+
+    # ── request-bill ──────────────────────────────────────────────────────────
+
+    def test_request_bill_sets_table_to_waiting_bill(self):
+        self._auth()
+        order_res = self.client.post(
+            "/api/v1/orders",
+            {
+                "branch": self.branch.id,
+                "channel": "DINE_IN",
+                "table": self.table.id,
+                "items": [{"menu_item": self.main.id, "quantity": 1}],
+            },
+            format="json",
+        )
+        order_id = order_res.data["id"]
+
+        res = self.client.post(f"/api/v1/orders/{order_id}/request-bill")
+        self.assertEqual(res.status_code, 200)
+
+        self.table.refresh_from_db()
+        self.assertEqual(self.table.state, "WAITING_BILL")
+
+    def test_request_bill_no_table_still_succeeds(self):
+        order_id = self._create_order()
+        res = self.client.post(f"/api/v1/orders/{order_id}/request-bill")
+        self.assertEqual(res.status_code, 200)
+
+    def test_request_bill_on_canceled_order_rejected(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/cancel")
+        res = self.client.post(f"/api/v1/orders/{order_id}/request-bill")
+        self.assertEqual(res.status_code, 400)
+
+    # ── kitchen ticket course filter ──────────────────────────────────────────
+
+    def test_kitchen_tickets_filter_by_course(self):
+        order_id = self._create_order()
+        self.client.post(f"/api/v1/orders/{order_id}/fire")
+
+        res = self.client.get("/api/v1/kitchen/tickets?course=STARTER")
+        self.assertEqual(res.data["count"], 1)
+        self.assertEqual(res.data["results"][0]["course"], "STARTER")

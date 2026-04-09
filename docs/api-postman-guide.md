@@ -1195,7 +1195,61 @@ Common errors:
 - 400 when order is already CANCELED or COMPLETED
 - 404 when order not found in caller's tenant
 
-## 3.24 Order Cancel and Complete Actions (Phase 3 Slice 3)
+## 3.24 Order Hold, Fire, and Course Fire (Phase 3 Complete)
+
+### Hold Order
+
+- Method: POST
+- URL: {{base_url}}/orders/{{order_id}}/hold
+- Auth: Yes (WAITER or above)
+
+No request body. Transitions OPEN → HELD (order taken, not yet sent to kitchen).
+
+### Fire Order (All Courses)
+
+- Method: POST
+- URL: {{base_url}}/orders/{{order_id}}/fire
+- Auth: Yes (WAITER or above)
+
+No request body. Fires all PENDING items to kitchen — creates one `KitchenTicket` per distinct course and queues a `PrintJob` per ticket.
+
+### Fire Specific Course
+
+- Method: POST
+- URL: {{base_url}}/orders/{{order_id}}/course/fire
+- Auth: Yes (WAITER or above)
+
+Request body:
+
+```json
+{ "course": "STARTER" }
+```
+
+Valid courses: `STARTER`, `MAIN`, `DESSERT`, `DRINK`, `OTHER`.
+
+Fires only PENDING items for the given course. Creates one `KitchenTicket` for that course.
+
+Common errors:
+- 400 when no pending items exist for the specified course
+- 400 when course value is invalid
+
+### Call Waiter
+
+- Method: POST
+- URL: {{base_url}}/orders/{{order_id}}/call-waiter
+- Auth: Yes (WAITER or above)
+
+No request body. Logs the event and returns 200. No order state change. Will trigger a realtime notification when the dispatcher is integrated.
+
+### Request Bill
+
+- Method: POST
+- URL: {{base_url}}/orders/{{order_id}}/request-bill
+- Auth: Yes (WAITER or above)
+
+No request body. Logs the event and sets the linked table's state to `WAITING_BILL` if a table is assigned.
+
+## 3.25 Order Cancel and Complete Actions (Phase 3 Slice 3)
 
 ### Cancel Order
 
@@ -1225,7 +1279,7 @@ Common errors:
 - 400 when order is already COMPLETED or CANCELED
 - 403 when caller is WAITER or CASHIER
 
-## 3.25 Order Item Sub-endpoints (Phase 3 Slice 2)
+## 3.26 Order Item Sub-endpoints (Phase 3 Slice 2)
 
 ### Add Item to Existing Order
 

@@ -6,6 +6,15 @@ from core.pagination import StandardResultsSetPagination
 from users.audit import log_activity
 from users.permissions import IsOwnerOrManager, IsWaiterOrAbove
 
+from .events import (
+    ORDER_CANCELED,
+    ORDER_COMPLETED,
+    ORDER_FIRED,
+    ORDER_HELD,
+    ORDER_UPDATED,
+    TICKET_PRINT_REQUESTED,
+    publish_order_event,
+)
 from .models import KitchenTicket, Order, OrderItem
 from .serializers import (
     KitchenTicketSerializer,
@@ -15,10 +24,12 @@ from .serializers import (
     OrderItemUpdateSerializer,
     OrderSerializer,
 )
+from .services import fire_order_items
 
+
+# ─── Order list/create ────────────────────────────────────────────────────────
 
 class OrderListCreateView(generics.ListCreateAPIView):
-    # Waiters and above can list and create orders
     permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
     pagination_class = StandardResultsSetPagination
 
@@ -69,9 +80,10 @@ class OrderListCreateView(generics.ListCreateAPIView):
         return Response(output.data, status=status.HTTP_201_CREATED)
 
 
+# ─── Order detail/update ──────────────────────────────────────────────────────
+
 class OrderDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = OrderSerializer
-    # Waiters and above can view/update order fields
     permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
 
     def get_queryset(self):
@@ -91,10 +103,151 @@ class OrderDetailView(generics.RetrieveUpdateAPIView):
             tenant=self.request.user.tenant,
             branch=order.branch,
         )
+        publish_order_event(ORDER_UPDATED, order, status=order.status)
+
+
+# ─── Order status actions ─────────────────────────────────────────────────────
+
+class OrderHoldView(APIView):
+    """Hold a taken order before sending to kitchen."""
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.select_related("branch", "tenant").get(pk=pk, tenant=request.user.tenant)
+        except Order.DoesNotExist:
+            return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.is_terminal:
+            return Response(
+                {"detail": "Cannot hold a completed or canceled order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if order.status not in {Order.Status.OPEN}:
+            return Response(
+                {"detail": f"Cannot hold an order with status '{order.status}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        order.status = Order.Status.HELD
+        order.save(update_fields=["status", "updated_at"])
+
+        log_activity(
+            actor_user=request.user,
+            action="order_held",
+            entity_type="order",
+            entity_id=str(order.id),
+            tenant=request.user.tenant,
+            branch=order.branch,
+        )
+        publish_order_event(ORDER_HELD, order)
+
+        return Response(OrderSerializer(order, context={"request": request}).data, status=status.HTTP_200_OK)
+
+
+class OrderFireView(APIView):
+    """Fire all pending items in the order to the kitchen (one ticket per course)."""
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def post(self, request, pk):
+        try:
+            order = (
+                Order.objects.select_related("branch", "tenant")
+                .prefetch_related("items")
+                .get(pk=pk, tenant=request.user.tenant)
+            )
+        except Order.DoesNotExist:
+            return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.is_terminal:
+            return Response(
+                {"detail": "Cannot fire a completed or canceled order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tickets = fire_order_items(order)
+
+        if not tickets:
+            return Response(
+                {"detail": "No pending items to fire."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        order.status = Order.Status.SENT_TO_KITCHEN
+        order.save(update_fields=["status", "updated_at"])
+
+        log_activity(
+            actor_user=request.user,
+            action="order_fired",
+            entity_type="order",
+            entity_id=str(order.id),
+            tenant=request.user.tenant,
+            branch=order.branch,
+        )
+        publish_order_event(ORDER_FIRED, order, tickets=[t.id for t in tickets])
+
+        order.refresh_from_db()
+        return Response(OrderSerializer(order, context={"request": request}).data, status=status.HTTP_200_OK)
+
+
+class OrderCourseFireView(APIView):
+    """Fire all pending items for a specific course."""
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def post(self, request, pk):
+        try:
+            order = (
+                Order.objects.select_related("branch", "tenant")
+                .prefetch_related("items")
+                .get(pk=pk, tenant=request.user.tenant)
+            )
+        except Order.DoesNotExist:
+            return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.is_terminal:
+            return Response(
+                {"detail": "Cannot fire a completed or canceled order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        course = request.data.get("course")
+        valid_courses = {c.value for c in OrderItem.Course}
+        if not course or course not in valid_courses:
+            return Response(
+                {"detail": f"'course' is required. Valid values: {sorted(valid_courses)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tickets = fire_order_items(order, course=course)
+
+        if not tickets:
+            return Response(
+                {"detail": f"No pending items found for course '{course}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Move to SENT_TO_KITCHEN if still OPEN/HELD
+        if order.status in {Order.Status.OPEN, Order.Status.HELD}:
+            order.status = Order.Status.SENT_TO_KITCHEN
+            order.save(update_fields=["status", "updated_at"])
+
+        log_activity(
+            actor_user=request.user,
+            action="order_course_fired",
+            entity_type="order",
+            entity_id=str(order.id),
+            tenant=request.user.tenant,
+            branch=order.branch,
+        )
+        publish_order_event(ORDER_FIRED, order, course=course, tickets=[t.id for t in tickets])
+
+        order.refresh_from_db()
+        return Response(OrderSerializer(order, context={"request": request}).data, status=status.HTTP_200_OK)
 
 
 class OrderSendToKitchenView(APIView):
-    # Waiters and above can fire orders to kitchen
+    """Legacy alias for fire — kept for backward compatibility."""
     permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
 
     def post(self, request, pk):
@@ -119,15 +272,10 @@ class OrderSendToKitchenView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        fire_order_items(order)
+
         order.status = Order.Status.SENT_TO_KITCHEN
         order.save(update_fields=["status", "updated_at"])
-        order.items.filter(status="PENDING").update(status="SENT")
-
-        KitchenTicket.objects.create(
-            tenant=order.tenant,
-            branch=order.branch,
-            order=order,
-        )
 
         log_activity(
             actor_user=request.user,
@@ -137,16 +285,13 @@ class OrderSendToKitchenView(APIView):
             tenant=request.user.tenant,
             branch=order.branch,
         )
+        publish_order_event(ORDER_FIRED, order)
 
         order.refresh_from_db()
-        return Response(
-            OrderSerializer(order, context={"request": request}).data,
-            status=status.HTTP_200_OK,
-        )
+        return Response(OrderSerializer(order, context={"request": request}).data, status=status.HTTP_200_OK)
 
 
 class OrderCancelView(APIView):
-    # Only managers/owners can cancel orders
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
 
     def post(self, request, pk):
@@ -172,15 +317,12 @@ class OrderCancelView(APIView):
             tenant=request.user.tenant,
             branch=order.branch,
         )
+        publish_order_event(ORDER_CANCELED, order)
 
-        return Response(
-            OrderSerializer(order, context={"request": request}).data,
-            status=status.HTTP_200_OK,
-        )
+        return Response(OrderSerializer(order, context={"request": request}).data, status=status.HTTP_200_OK)
 
 
 class OrderCompleteView(APIView):
-    # Only managers/owners can mark orders complete
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
 
     def post(self, request, pk):
@@ -206,15 +348,78 @@ class OrderCompleteView(APIView):
             tenant=request.user.tenant,
             branch=order.branch,
         )
+        publish_order_event(ORDER_COMPLETED, order)
 
-        return Response(
-            OrderSerializer(order, context={"request": request}).data,
-            status=status.HTTP_200_OK,
+        return Response(OrderSerializer(order, context={"request": request}).data, status=status.HTTP_200_OK)
+
+
+class OrderCallWaiterView(APIView):
+    """Signal that a waiter is needed at the table. Logs the event; no order state change."""
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.select_related("branch").get(pk=pk, tenant=request.user.tenant)
+        except Order.DoesNotExist:
+            return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.is_terminal:
+            return Response(
+                {"detail": "Cannot call waiter for a completed or canceled order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        log_activity(
+            actor_user=request.user,
+            action="call_waiter",
+            entity_type="order",
+            entity_id=str(order.id),
+            tenant=request.user.tenant,
+            branch=order.branch,
         )
+        publish_order_event("order.call_waiter", order)
 
+        return Response({"detail": "Waiter call registered."}, status=status.HTTP_200_OK)
+
+
+class OrderRequestBillView(APIView):
+    """Signal that the customer wants the bill. Sets table state to WAITING_BILL if table assigned."""
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.select_related("branch", "table").get(pk=pk, tenant=request.user.tenant)
+        except Order.DoesNotExist:
+            return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.is_terminal:
+            return Response(
+                {"detail": "Cannot request bill for a completed or canceled order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Sync table state to WAITING_BILL if a table is assigned
+        if order.table:
+            from tables.models import DiningTable
+            order.table.state = DiningTable.State.WAITING_BILL
+            order.table.save(update_fields=["state", "updated_at"])
+
+        log_activity(
+            actor_user=request.user,
+            action="request_bill",
+            entity_type="order",
+            entity_id=str(order.id),
+            tenant=request.user.tenant,
+            branch=order.branch,
+        )
+        publish_order_event("order.bill_requested", order)
+
+        return Response({"detail": "Bill request registered."}, status=status.HTTP_200_OK)
+
+
+# ─── Order items ──────────────────────────────────────────────────────────────
 
 class OrderItemAddView(APIView):
-    # Waiters and above can add items
     permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
 
     def post(self, request, pk):
@@ -246,7 +451,6 @@ class OrderItemAddView(APIView):
 
 
 class OrderItemDetailView(APIView):
-    # Waiters and above can update/delete items
     permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
 
     def _get_item(self, request, order_pk, item_pk):
@@ -300,6 +504,8 @@ class OrderItemDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+# ─── Kitchen tickets ──────────────────────────────────────────────────────────
+
 class KitchenTicketListView(generics.ListAPIView):
     serializer_class = KitchenTicketSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
@@ -320,6 +526,10 @@ class KitchenTicketListView(generics.ListAPIView):
         ticket_status = params.get("status")
         if ticket_status:
             queryset = queryset.filter(status=ticket_status)
+
+        course = params.get("course")
+        if course:
+            queryset = queryset.filter(course=course)
 
         return queryset
 
@@ -349,5 +559,6 @@ class KitchenTicketPreparedView(APIView):
             tenant=request.user.tenant,
             branch=ticket.branch,
         )
+        publish_order_event(TICKET_PRINT_REQUESTED, ticket.order, ticket_id=ticket.id)
 
         return Response(KitchenTicketSerializer(ticket).data, status=status.HTTP_200_OK)

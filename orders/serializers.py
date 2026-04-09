@@ -13,6 +13,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "unit_price",
             "vat_rate",
             "quantity",
+            "course",
             "status",
             "notes",
             "created_at",
@@ -31,7 +32,10 @@ class OrderItemAddSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ["id", "menu_item", "item_name", "unit_price", "vat_rate", "quantity", "notes", "status", "created_at", "updated_at"]
+        fields = [
+            "id", "menu_item", "item_name", "unit_price", "vat_rate",
+            "quantity", "course", "notes", "status", "created_at", "updated_at",
+        ]
         read_only_fields = ["id", "item_name", "unit_price", "vat_rate", "status", "created_at", "updated_at"]
 
     def validate_quantity(self, value):
@@ -53,7 +57,7 @@ class OrderItemUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ["id", "quantity", "notes", "status", "created_at", "updated_at"]
+        fields = ["id", "quantity", "course", "notes", "status", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate_quantity(self, value):
@@ -65,8 +69,8 @@ class OrderItemUpdateSerializer(serializers.ModelSerializer):
 class KitchenTicketSerializer(serializers.ModelSerializer):
     class Meta:
         model = KitchenTicket
-        fields = ["id", "tenant", "branch", "order", "status", "created_at", "updated_at"]
-        read_only_fields = ["id", "tenant", "branch", "order", "created_at", "updated_at"]
+        fields = ["id", "tenant", "branch", "order", "course", "status", "created_at", "updated_at"]
+        read_only_fields = ["id", "tenant", "branch", "order", "course", "created_at", "updated_at"]
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):

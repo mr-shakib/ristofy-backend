@@ -7,73 +7,78 @@ Last updated: 2026-04-09
 ### Phase 0 (Completed)
 - Environment-based configuration and security baseline in settings.
 - CI checks and migration drift checks are active.
-- Repo hygiene in place (.gitignore, docs flow, env template).
 
 ### Phase 1 (Completed)
-- Tenant registration and branch creation.
-- Role-aware user management.
-- Password and PIN login.
-- Token refresh/logout.
-- Current-user profile endpoint.
+- Tenant registration, branch creation, role-aware user management.
+- Password and PIN login, token refresh/logout, profile endpoint.
 - Session and activity logging.
-- Test coverage for key auth/account flows.
 
 ### Phase 2 (Completed)
-- Menu: Categories and items CRUD, allergen catalog, item-allergen mapping, schedule windows, filtering + pagination.
-- Dining layout: Floor plans and tables CRUD, reservations CRUD + status actions (arrived/cancel), overlap protection, waitlist CRUD + status actions (call/seat/cancel), table state sync.
+- Menu: Categories and items CRUD, allergens, schedules, filtering + pagination.
+- Dining layout: Floor plans, tables, reservations + status actions, waitlist + status actions, table state sync.
 
-### Phase 3 (Slices 1–3 Complete)
-- Order and OrderItem models with full status lifecycle (OPEN → SENT_TO_KITCHEN → PARTIALLY_SERVED → COMPLETED → CANCELED).
-- order_no: auto-incremented per branch, unique constraint, exposed in all responses.
-- POST /api/v1/orders — create with items (snapshot name/price/vat from MenuItem).
+### Phase 3 (Completed)
+- Order and OrderItem models with full status lifecycle (OPEN → HELD → SENT_TO_KITCHEN → PARTIALLY_SERVED → COMPLETED → CANCELED).
+- OrderItem course field: STARTER, MAIN, DESSERT, DRINK, OTHER.
+- order_no: auto-incremented per branch (select_for_update safe), unique constraint.
+- POST /api/v1/orders — create with items.
 - GET /api/v1/orders — list with branch/status/channel filters + pagination.
-- GET/PATCH /api/v1/orders/{id} — detail and update.
-- POST /api/v1/orders/{id}/send-to-kitchen — transitions order + items, auto-creates KitchenTicket.
+- GET/PATCH /api/v1/orders/{id}.
+- POST /api/v1/orders/{id}/hold — OPEN → HELD.
+- POST /api/v1/orders/{id}/fire — fires all PENDING items, one KitchenTicket + PrintJob per course.
+- POST /api/v1/orders/{id}/course/fire — fires PENDING items for one course only.
+- POST /api/v1/orders/{id}/send-to-kitchen — legacy alias for fire (backward compat).
 - POST /api/v1/orders/{id}/cancel — OWNER/MANAGER only.
 - POST /api/v1/orders/{id}/complete — OWNER/MANAGER only.
-- POST /api/v1/orders/{id}/items — add item to existing order.
-- PATCH /api/v1/orders/{id}/items/{item_id} — update item qty/notes/status.
-- DELETE /api/v1/orders/{id}/items/{item_id} — remove item.
-- GET /api/v1/kitchen/tickets — list tickets with branch/status filters.
-- POST /api/v1/kitchen/tickets/{id}/prepared — mark ticket prepared.
-- IsWaiterOrAbove permission: WAITER/CASHIER/MANAGER/OWNER can create orders and manage items; cancel/complete restricted to OWNER/MANAGER.
-- 46 tests passing.
+- POST /api/v1/orders/{id}/call-waiter — logs event, realtime-ready stub.
+- POST /api/v1/orders/{id}/request-bill — logs event, sets table to WAITING_BILL.
+- POST /api/v1/orders/{id}/items, PATCH/DELETE /api/v1/orders/{id}/items/{item_id}.
+- GET /api/v1/kitchen/tickets (filters: branch, status, course).
+- POST /api/v1/kitchen/tickets/{id}/prepared.
+- Printer + PrintJob models in printers app (foundation for Phase 6 printer management API).
+- orders/events.py: publish_order_event() stub — structured envelope, Redis-ready.
+- IsWaiterOrAbove permission class in users/permissions.py.
+- 66 tests passing.
 
-## 2) New Migrations In This Session
+## 2) All Migrations
 
 - orders/migrations/0001_initial.py
 - orders/migrations/0002_kitchenticket.py
 - orders/migrations/0003_order_order_no_order_uniq_order_no_per_branch.py
+- orders/migrations/0004_alter_orderitem_options_kitchenticket_course_and_more.py
+- printers/migrations/0001_initial.py
 
-## 3) Current API Surface Added Recently
+## 3) Full Orders API Surface
 
-- /api/v1/orders (GET, POST)
-- /api/v1/orders/{id} (GET, PATCH)
-- /api/v1/orders/{id}/send-to-kitchen (POST)
-- /api/v1/orders/{id}/cancel (POST)
-- /api/v1/orders/{id}/complete (POST)
-- /api/v1/orders/{id}/items (POST)
-- /api/v1/orders/{id}/items/{item_id} (PATCH, DELETE)
-- /api/v1/kitchen/tickets (GET)
-- /api/v1/kitchen/tickets/{id}/prepared (POST)
-
-For payloads and responses, use docs/api-postman-guide.md §3.23–3.26.
+- GET/POST /api/v1/orders
+- GET/PATCH /api/v1/orders/{id}
+- POST /api/v1/orders/{id}/hold
+- POST /api/v1/orders/{id}/fire
+- POST /api/v1/orders/{id}/course/fire  — body: `{"course": "MAIN"}`
+- POST /api/v1/orders/{id}/send-to-kitchen  (legacy)
+- POST /api/v1/orders/{id}/cancel
+- POST /api/v1/orders/{id}/complete
+- POST /api/v1/orders/{id}/call-waiter
+- POST /api/v1/orders/{id}/request-bill
+- POST /api/v1/orders/{id}/items
+- PATCH/DELETE /api/v1/orders/{id}/items/{item_id}
+- GET /api/v1/kitchen/tickets
+- POST /api/v1/kitchen/tickets/{id}/prepared
 
 ## 4) Known Open Item
 
-- JWT warning about short HMAC key can appear in tests when env key is too short.
-- Recommendation: keep signing key >= 32 chars in local and CI env.
+- JWT HMAC key warning in tests when SECRET_KEY < 32 chars (env-only, not a code issue).
+- publish_order_event() currently logs only — wire to Redis XADD when dispatcher is ready.
+- PrintJob.status stays QUEUED — Go bridge will PATCH to SENT/FAILED via /api/v1/integrations/bridge/print-ack (Phase 6).
 
 ## 5) Where To Start Next (Phase 4 — Buffet)
 
-Phase 3 is functionally complete for the core order lifecycle. Next is Phase 4: Buffet and hybrid mode.
-
 ### Step A: BuffetPlan model
-- Fields: branch, name, base_price, kids_price, time_limit_minutes, waste_penalty_amount, round_limit_per_person, round_delay_seconds, active_from, active_to
-- CRUD: GET/POST /api/v1/buffet/plans, PATCH /api/v1/buffet/plans/{id}
+- Fields: branch, name, base_price, kids_price, time_limit_minutes, waste_penalty_amount, round_limit_per_person, round_delay_seconds, active_from, active_to, is_active
+- CRUD: GET/POST /api/v1/buffet/plans, GET/PATCH /api/v1/buffet/plans/{id}
 
 ### Step B: BuffetSession model
-- Fields: tenant, branch, table_session (nullable for now), buffet_plan, adults_count, kids_count, started_at, ends_at, status (ACTIVE/ENDED)
+- Fields: tenant, branch, order (FK), buffet_plan, adults_count, kids_count, started_at, ends_at, status (ACTIVE/ENDED)
 - POST /api/v1/buffet/sessions/start
 - GET /api/v1/buffet/sessions/{id}
 - POST /api/v1/buffet/sessions/{id}/end
@@ -83,11 +88,12 @@ Phase 3 is functionally complete for the core order lifecycle. Next is Phase 4: 
 - POST /api/v1/buffet/sessions/{id}/new-round
 - POST /api/v1/buffet/sessions/{id}/close-round
 
-### Step D: Tests and docs
+### Step D: WasteLog model
+- Fields: tenant, branch, order_item, quantity_wasted, penalty_applied, marked_by, reason
+- POST /api/v1/waste-logs
+- GET /api/v1/buffet/analytics
 
 ## 6) Next Session Quick Commands
-
-Run at session start:
 
 ```bash
 ./venv/bin/python manage.py check
@@ -97,13 +103,11 @@ Run at session start:
 
 ## 7) Copy-Paste Prompt For Next Session
 
-"Continue from docs/session-handoff.md. Implement Phase 4: BuffetPlan, BuffetSession, and BuffetRound models with CRUD and session lifecycle endpoints. Keep tenant/branch isolation strict. Run check + makemigrations --check --dry-run + tests and report changed files and endpoint list."
+"Continue from docs/session-handoff.md. Phase 3 is complete. Implement Phase 4: BuffetPlan CRUD, BuffetSession lifecycle (start/end), BuffetRound (new-round/close-round), and WasteLog. Keep tenant/branch isolation strict. Run check + makemigrations --check --dry-run + tests and report changed files and endpoint list."
 
-## 8) Definition Of Done For Next Session
+## 8) Definition Of Done For Phase 4
 
-- Buffet plan CRUD functional and tested.
-- Buffet session start/end functional and tested.
-- Buffet round new/close functional and tested.
+- Buffet plan CRUD, session start/end, round new/close, waste log functional and tested.
 - No pending migrations.
 - All tests passing.
-- Postman and roadmap docs updated in same change.
+- Postman and roadmap docs updated.
