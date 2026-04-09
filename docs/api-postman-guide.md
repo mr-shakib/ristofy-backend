@@ -1088,6 +1088,113 @@ Common errors:
 - 400 when trying to seat without assigning a table
 - 400 when trying to call/seat a canceled waitlist entry
 
+## 3.23 Orders (Phase 3)
+
+### Create Order
+
+- Method: POST
+- URL: {{base_url}}/orders
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "channel": "DINE_IN",
+  "table": 1,
+  "notes": "Extra napkins",
+  "items": [
+    {
+      "menu_item": 1,
+      "quantity": 2,
+      "notes": "No onions"
+    }
+  ]
+}
+```
+
+Success response (201):
+
+```json
+{
+  "id": 1,
+  "tenant": 10,
+  "branch": 20,
+  "table": 1,
+  "waiter_user": null,
+  "status": "OPEN",
+  "channel": "DINE_IN",
+  "notes": "Extra napkins",
+  "items": [
+    {
+      "id": 1,
+      "menu_item": 1,
+      "item_name": "Margherita",
+      "unit_price": "10.00",
+      "vat_rate": "10.00",
+      "quantity": 2,
+      "status": "PENDING",
+      "notes": "No onions",
+      "created_at": "2026-04-09T10:00:00.000000Z",
+      "updated_at": "2026-04-09T10:00:00.000000Z"
+    }
+  ],
+  "created_at": "2026-04-09T10:00:00.000000Z",
+  "updated_at": "2026-04-09T10:00:00.000000Z"
+}
+```
+
+### List Orders
+
+- Method: GET
+- URL: {{base_url}}/orders
+- Auth: Yes (OWNER or MANAGER)
+
+Supported filters:
+
+- `branch` — filter by branch ID
+- `status` — OPEN | SENT_TO_KITCHEN | PARTIALLY_SERVED | COMPLETED | CANCELED
+- `channel` — DINE_IN | TAKEAWAY
+
+Paginated response shape (same as other list endpoints).
+
+### Get Order Detail
+
+- Method: GET
+- URL: {{base_url}}/orders/{{order_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+### Update Order
+
+- Method: PATCH
+- URL: {{base_url}}/orders/{{order_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+Request body example:
+
+```json
+{
+  "status": "CANCELED",
+  "notes": "Customer left"
+}
+```
+
+### Send to Kitchen
+
+- Method: POST
+- URL: {{base_url}}/orders/{{order_id}}/send-to-kitchen
+- Auth: Yes (OWNER or MANAGER)
+
+No request body. Transitions order status to `SENT_TO_KITCHEN` and all `PENDING` items to `SENT`.
+
+Success response (200): full order object with updated status.
+
+Common errors:
+
+- 400 when order is already CANCELED or COMPLETED
+- 404 when order not found in caller's tenant
+
 ## 4. Postman Tests Script Snippets
 
 Add this to login and register requests Tests tab to store tokens:
