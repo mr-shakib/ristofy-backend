@@ -1,6 +1,6 @@
 # Session Handoff (Low-Token Starter)
 
-Last updated: 2026-04-10
+Last updated: 2026-04-11
 
 ## 1) What Is Done
 
@@ -42,17 +42,23 @@ See docs/backend-roadmap.md for full detail. Summary:
 	- POST `/api/v1/integrations/bridge/fiscal-ack`
 - Fiscal tests added for send/reprint/refund/z-report/ack + isolation + permissions.
 
-### Phase 7 (Completed — core scope)
+### Phase 7 (Completed)
 - **Ingredient model** implemented: tenant, branch, name, sku, unit, current_stock, min_stock_level, is_active.
 - **StockMovement model** implemented: append-only movement ledger with `stock_before`/`stock_after` snapshots.
+- **RecipeComponent model** implemented: menu item to ingredient quantity mapping per branch.
 - **Inventory API implemented**:
 	- GET/POST `/api/v1/inventory/ingredients`
 	- GET/PATCH/DELETE `/api/v1/inventory/ingredients/{id}`
+	- GET/POST `/api/v1/inventory/recipes`
+	- GET/PATCH/DELETE `/api/v1/inventory/recipes/{id}`
 	- GET/POST `/api/v1/inventory/movements`
+	- POST `/api/v1/inventory/receivings`
 	- GET `/api/v1/inventory/reports/low-stock`
+	- GET `/api/v1/inventory/reports/usage`
 - **Stock safety rule** implemented: stock movement writes are atomic and reject negative resulting stock.
-- **Tests added** for role permissions, tenant isolation on writes/reads, low-stock filtering, and movement constraints.
-- **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test inventory`, and full `manage.py test` passed (133 tests total) using Python 3.14 with PostgreSQL.
+- **Order integration implemented**: firing/sending orders to kitchen auto-deducts stock based on active recipe components.
+- **Tests added** for role permissions, tenant isolation on writes/reads, low-stock filtering, movement constraints, recipe mapping, receiving flow, usage analytics, and fire-flow stock rollback safety.
+- **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test inventory`, `manage.py test orders`, and full `manage.py test` passed (140 tests total) using Python 3.14 with PostgreSQL.
 
 ## 2) New Migrations
 
@@ -61,6 +67,7 @@ See docs/backend-roadmap.md for full detail. Summary:
 - billing/migrations/0002_payment.py
 - billing/migrations/0003_receipt_fiscaltransaction_refund.py
 - inventory/migrations/0001_initial.py
+- inventory/migrations/0002_alter_stockmovement_movement_type_recipecomponent.py
 
 ## 3) Phase 4 API Surface
 
@@ -84,19 +91,16 @@ For payloads, see docs/api-postman-guide.md §3.27–3.30.
 - Fiscal integration currently uses simulated completion flow (no real device/bridge transport yet).
 - Default project `.venv` is Python 3.11 (incompatible with pinned Django 6.0.4); local validation was executed using a Python 3.14 virtualenv.
 
-## 5) Where To Start Next (Post-Phase 7 Core)
+## 5) Where To Start Next (Phase 8)
 
-### Phase 7 core scope: Completed
-- Ingredient and stock core models
-- Stock movement ledger endpoints
-- Low-stock report endpoint
-- Tests for tenant/branch isolation on inventory writes
+### Phase 7: Completed
+- Inventory core and extension scope delivered in production-grade shape.
 
-### Next Priority (Phase 7 extension / Phase 8 prep)
-- Recipe mapping between menu items and ingredients
-- Auto-deduction from stock on accepted/fired order items
-- Receiving-specific movement flow and optional supplier linkage
-- Inventory usage analytics to feed reporting phase
+### Next Priority (Phase 8 — Takeaway and loyalty)
+- Takeaway order path and packaging fees
+- Customer profile and visit history endpoints
+- Loyalty eligibility and visit accrual flow
+- Test coverage for tenant isolation and cashier/waiter role boundaries
 
 ## 6) Next Session Quick Commands
 
@@ -116,7 +120,7 @@ Note: the default `.venv` is Python 3.11 and incompatible with pinned Django 6.0
 
 ## 7) Copy-Paste Prompt For Next Session
 
-"Continue from docs/session-handoff.md. Phase 7 core inventory is complete (ingredients, stock movements, low-stock report). Implement the next slice: recipe mapping + stock auto-deduction on order acceptance/fire, with strict tenant isolation and tests. Update docs and run check + makemigrations --check --dry-run + tests."
+"Continue from docs/session-handoff.md. Phase 7 inventory is complete including recipe mapping, receiving flow, usage analytics, and auto-deduction on order fire. Start Phase 8 takeaway and loyalty with production-grade endpoints, strict tenant isolation, tests, and docs updates."
 
 ## 8) Definition Of Done For Phase 5
 
@@ -125,13 +129,14 @@ Note: the default `.venv` is Python 3.11 and incompatible with pinned Django 6.0
 - Finalize locks lines; pay records payment and marks bill PAID.
 - No pending migrations. All tests passing. Docs updated.
 
-## 9) Audit Notes (2026-04-10)
+## 9) Audit Notes (2026-04-11)
 
 - Verified in code: billing Step A-D endpoints and payment workflow are implemented.
 - Verified in code: fiscal integration endpoints (send-to-fiscal, receipt actions, z-report sync/status, bridge ack) are implemented.
 - Verified migrations added: billing/migrations/0001_initial.py, billing/migrations/0002_payment.py, billing/migrations/0003_receipt_fiscaltransaction_refund.py.
-- Verified in code: inventory core endpoints implemented (ingredients CRUD, stock movements, low-stock report) with tenant isolation.
-- Verified migration added: inventory/migrations/0001_initial.py.
-- Validation rerun with PostgreSQL and Python 3.14: 133 tests passing.
+- Verified in code: inventory full phase endpoints implemented (ingredients, recipes, movements, receiving, low-stock, usage) with tenant isolation.
+- Verified in code: order fire/send-to-kitchen flow auto-deducts stock from active recipe components with rollback safety on insufficiency.
+- Verified migrations added: inventory/migrations/0001_initial.py and inventory/migrations/0002_alter_stockmovement_movement_type_recipecomponent.py.
+- Validation rerun with PostgreSQL and Python 3.14: 140 tests passing.
 - Known local environment issue: Python 3.11 is incompatible with pinned Django 6.0.4.
-- Next implementation priority: Phase 7 extension (recipe mapping + auto-deduction).
+- Next implementation priority: Phase 8 takeaway and loyalty.

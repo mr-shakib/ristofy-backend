@@ -32,9 +32,33 @@ class Ingredient(models.Model):
 		return f"{self.name} ({self.branch.name})"
 
 
+class RecipeComponent(models.Model):
+	tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="recipe_components")
+	branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="recipe_components")
+	menu_item = models.ForeignKey("menu.MenuItem", on_delete=models.CASCADE, related_name="recipe_components")
+	ingredient = models.ForeignKey(Ingredient, on_delete=models.CASCADE, related_name="recipe_components")
+	quantity = models.DecimalField(max_digits=12, decimal_places=3)
+	is_active = models.BooleanField(default=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ["menu_item_id", "ingredient_id"]
+		constraints = [
+			models.UniqueConstraint(
+				fields=["tenant", "branch", "menu_item", "ingredient"],
+				name="uniq_recipe_component_per_menu_item_ingredient",
+			),
+		]
+
+	def __str__(self):
+		return f"{self.menu_item.name} -> {self.ingredient.name} ({self.quantity})"
+
+
 class StockMovement(models.Model):
 	class MovementType(models.TextChoices):
 		STOCK_IN = "STOCK_IN", "Stock In"
+		RECEIVING = "RECEIVING", "Receiving"
 		STOCK_OUT = "STOCK_OUT", "Stock Out"
 
 	tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="stock_movements")
@@ -83,7 +107,8 @@ class StockMovement(models.Model):
 			)
 
 			stock_before = ingredient_locked.current_stock
-			delta = quantity if movement_type == cls.MovementType.STOCK_IN else -quantity
+			is_inbound = movement_type in {cls.MovementType.STOCK_IN, cls.MovementType.RECEIVING}
+			delta = quantity if is_inbound else -quantity
 			stock_after = stock_before + delta
 
 			if stock_after < Decimal("0"):

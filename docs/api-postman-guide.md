@@ -32,6 +32,7 @@ Create an environment named RMS Local with these variables:
 - waitlist_id =
 - ingredient_id =
 - movement_id =
+- recipe_id =
 
 ### 1.2 Common Headers
 
@@ -1867,7 +1868,7 @@ Behavior:
 
 - Updates existing fiscal transaction status and optional response payload.
 
-## 3.33 Inventory (Phase 7 - Implemented Core Scope)
+## 3.33 Inventory (Phase 7 - Implemented)
 
 ### Ingredient List/Create
 
@@ -2011,6 +2012,121 @@ Common inventory errors:
 - 400 when branch or ingredient belongs to another tenant.
 - 400 when stock movement would make stock negative.
 - 403 when caller role is not OWNER/MANAGER.
+
+### Recipe Components List/Create
+
+- Method: GET, POST
+- URL: {{base_url}}/inventory/recipes
+- Auth: Yes (OWNER or MANAGER)
+
+Create request body:
+
+```json
+{
+  "branch": 20,
+  "menu_item": 11,
+  "ingredient": 1,
+  "quantity": "0.250",
+  "is_active": true
+}
+```
+
+Create success response (201):
+
+```json
+{
+  "id": 1,
+  "tenant": 10,
+  "branch": 20,
+  "menu_item": 11,
+  "ingredient": 1,
+  "quantity": "0.250",
+  "is_active": true,
+  "created_at": "2026-04-11T10:00:00.000000Z",
+  "updated_at": "2026-04-11T10:00:00.000000Z"
+}
+```
+
+### Recipe Component Detail/Update/Delete
+
+- Method: GET, PATCH, DELETE
+- URL: {{base_url}}/inventory/recipes/{{recipe_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+Rules:
+
+- Branch, menu item, and ingredient must belong to the caller tenant.
+- Ingredient branch must match the selected branch.
+
+### Receiving Flow (Stock In)
+
+- Method: POST
+- URL: {{base_url}}/inventory/receivings
+- Auth: Yes (OWNER or MANAGER)
+
+Request body:
+
+```json
+{
+  "ingredient": 1,
+  "quantity": "5.000",
+  "supplier_name": "Main Supplier",
+  "document_no": "RCV-1001",
+  "notes": "Weekly delivery"
+}
+```
+
+Behavior:
+
+- Creates `RECEIVING` stock movement.
+- Updates ingredient stock atomically.
+
+### Inventory Usage Report
+
+- Method: GET
+- URL: {{base_url}}/inventory/reports/usage
+- Auth: Yes (OWNER or MANAGER)
+
+Optional filters:
+
+- `branch`
+- `ingredient`
+- `date_from`
+- `date_to`
+
+Success response (200):
+
+```json
+{
+  "count": 1,
+  "total_consumed": "6.000",
+  "total_received": "5.000",
+  "results": [
+    {
+      "ingredient": 1,
+      "ingredient_name": "Flour",
+      "unit": "KG",
+      "movement_count": 3,
+      "consumed_quantity": "6.000",
+      "received_quantity": "5.000",
+      "net_quantity": "-1.000"
+    }
+  ]
+}
+```
+
+### Auto Deduction On Order Fire
+
+When recipe components are configured, these endpoints automatically deduct inventory:
+
+- POST {{base_url}}/orders/{{order_id}}/fire
+- POST {{base_url}}/orders/{{order_id}}/send-to-kitchen
+
+Rules:
+
+- Deduction is based on `recipe_component.quantity * order_item.quantity` aggregated per ingredient.
+- Stock deduction and item status update run in one transaction.
+- If stock is insufficient, request returns 400 and no item status/ticket side effects are committed.
 
 ## 5. Common Troubleshooting
 

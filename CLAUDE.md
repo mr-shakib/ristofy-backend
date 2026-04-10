@@ -30,7 +30,7 @@ Run server:
 | `orders` | Order lifecycle, OrderItem, KitchenTicket, Buffet flows |
 | `billing` | Bill, Payment, Receipt, FiscalTransaction, Refund |
 | `printers` | Printer, PrintJob (Phase 6+) |
-| `inventory` | Ingredient, StockMovement, low-stock reporting |
+| `inventory` | Ingredient, RecipeComponent, StockMovement, receiving + usage analytics |
 | `reports` | Snapshots, KPIs (Phase 9+) |
 
 ## Implementation Status
@@ -42,7 +42,7 @@ Run server:
 - **Phase 4** — Complete: buffet plans/sessions/rounds, waste logging, buffet analytics
 - **Phase 5** — Complete: billing core (bill creation from order, coperto/discount/finalize/pay)
 - **Phase 6** — Complete: fiscal integration API (send-to-fiscal, receipt actions, z-report, bridge fiscal ack)
-- **Phase 7** — Complete (core scope): ingredients, stock ledger, low-stock reporting
+- **Phase 7** — Complete: inventory core + recipe mapping + receiving flow + usage analytics + fire-flow auto-deduction
 - **Phase 8** — Next: takeaway and loyalty
 
 ## Coding Conventions
@@ -127,11 +127,11 @@ Run a specific app: `./venv/bin/python manage.py test orders`
 - Default project `.venv` is Python 3.11, while pinned `Django==6.0.4` requires Python 3.12+
 - PrintJob transport is still pending; jobs are queued but not yet delivered through real bridge/device integration
 
-## Next Phase Plan (Phase 7 Extension / Phase 8 Prep)
+## Next Phase Plan (Phase 8)
 See `docs/session-handoff.md` §5 for current implementation priority.
 
 Targets for next implementation slice:
-- Recipe mapping between menu items and ingredients
-- Auto-deduction from stock on order accept/fire flows
-- Receiving-specific stock movement flow
-- Inventory usage metrics for reporting integration
+- Takeaway order lifecycle endpoints
+- Packaging/extra fee application rules
+- Customer loyalty profile and visit tracking
+- Loyalty eligibility endpoint with tenant/branch isolation tests

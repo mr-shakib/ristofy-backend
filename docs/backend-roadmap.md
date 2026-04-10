@@ -61,23 +61,28 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Z report sync/status endpoints implemented.
 	- Bridge fiscal acknowledgement endpoint implemented.
 	- Tenant isolation and OWNER/MANAGER permission checks enforced across fiscal endpoints.
-- Phase 7: Completed (core scope)
+- Phase 7: Completed
 	- Ingredient and StockMovement models implemented with strict tenant/branch scoping.
+	- RecipeComponent model implemented for menu item to ingredient mapping.
 	- Inventory API implemented:
 		- GET/POST /api/v1/inventory/ingredients
 		- GET/PATCH/DELETE /api/v1/inventory/ingredients/{id}
+		- GET/POST /api/v1/inventory/recipes
+		- GET/PATCH/DELETE /api/v1/inventory/recipes/{id}
 		- GET/POST /api/v1/inventory/movements
+		- POST /api/v1/inventory/receivings
 		- GET /api/v1/inventory/reports/low-stock
+		- GET /api/v1/inventory/reports/usage
 	- Stock ledger writes are atomic and reject negative resulting stock.
-	- Inventory API tests added for tenant isolation, role enforcement, movement validation, and low-stock reporting.
-	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (133 tests) using Python 3.14 with PostgreSQL.
+	- Auto-deduction from inventory is enforced on order fire/send-to-kitchen based on active recipe components.
+	- Inventory and order integration tests added for tenant isolation, role enforcement, movement validation, low-stock reporting, recipe mapping, receiving flow, usage analytics, and fire-flow stock guards.
+	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (140 tests) using Python 3.14 with PostgreSQL.
 
-## 1.2 Status Audit Snapshot (2026-04-10)
+## 1.2 Status Audit Snapshot (2026-04-11)
 
-- Code and docs are aligned for completed core scope through Phase 7.
+- Code and docs are aligned for completed scope through Phase 7.
 - Billing Step A-D and fiscal integration flows are implemented in code (models, migrations, endpoints, tests).
-- Inventory Phase 7 core scope is implemented in code (models, migration, endpoints, tests).
-- Remaining inventory enhancements (for example recipe mapping and auto-deduction on order acceptance) are outside completed core scope.
+- Inventory Phase 7 full scope is implemented in code (models, migrations, endpoints, tests, and order-flow integration).
 - Default `.venv` in this workspace is Python 3.11 (not compatible with Django 6.0.4); local validation was executed via Python 3.14 virtualenv.
 
 ## 2. Target Tech Stack
@@ -650,7 +655,7 @@ Mode:
 
 ### 5.9 Inventory
 
-Implemented in current core scope:
+Implemented in current scope:
 
 #### Ingredient
 - id
@@ -883,9 +888,16 @@ All endpoints are under /api/v1 and require tenant-scoped auth unless explicitly
 - GET /api/v1/inventory/ingredients/{id}
 - PATCH /api/v1/inventory/ingredients/{id}
 - DELETE /api/v1/inventory/ingredients/{id}
+- GET /api/v1/inventory/recipes
+- POST /api/v1/inventory/recipes
+- GET /api/v1/inventory/recipes/{id}
+- PATCH /api/v1/inventory/recipes/{id}
+- DELETE /api/v1/inventory/recipes/{id}
 - GET /api/v1/inventory/movements
 - POST /api/v1/inventory/movements
+- POST /api/v1/inventory/receivings
 - GET /api/v1/inventory/reports/low-stock
+- GET /api/v1/inventory/reports/usage
 - GET /api/v1/reports/daily-sales
 - GET /api/v1/reports/sales-by-category
 - GET /api/v1/reports/sales-by-table
@@ -1041,8 +1053,8 @@ All endpoints are under /api/v1 and require tenant-scoped auth unless explicitly
 - Z report sync structure
 
 ### Phase 7 (Week 11): Inventory integration
-- Completed (core scope): ingredient CRUD, stock movement ledger, low-stock report, and isolation test coverage
-- Remaining extension items: recipe mapping, auto-deduction on accepted order items, and receiving-specific flows
+- Completed: ingredient CRUD, recipe components, stock movement ledger, receiving flow, low-stock and usage reports
+- Completed: auto-deduction on order fire/send-to-kitchen with stock safety rollback behavior
 
 ### Phase 8 (Week 12): Takeaway and loyalty
 - Takeaway order path and packaging fees

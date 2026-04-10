@@ -166,7 +166,10 @@ class OrderFireView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        tickets = fire_order_items(order)
+        try:
+            tickets = fire_order_items(order)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         if not tickets:
             return Response(
@@ -219,7 +222,10 @@ class OrderCourseFireView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        tickets = fire_order_items(order, course=course)
+        try:
+            tickets = fire_order_items(order, course=course)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         if not tickets:
             return Response(
@@ -272,7 +278,10 @@ class OrderSendToKitchenView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        fire_order_items(order)
+        try:
+            fire_order_items(order)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         order.status = Order.Status.SENT_TO_KITCHEN
         order.save(update_fields=["status", "updated_at"])

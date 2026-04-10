@@ -2,6 +2,8 @@
 Order domain services — printer routing and kitchen ticket creation.
 """
 
+from django.db import transaction
+
 from printers.models import PrintJob, Printer
 
 
@@ -54,12 +56,18 @@ def fire_order_items(order, course=None):
     if course:
         items_qs = items_qs.filter(course=course)
 
-    if not items_qs.exists():
+    pending_items = list(items_qs.select_related("menu_item"))
+    if not pending_items:
         return []
 
-    # Capture distinct courses BEFORE updating so the queryset is still valid
-    courses_to_fire = list(items_qs.values_list("course", flat=True).distinct()) if not course else [course]
-    items_qs.update(status="SENT")
+    # Capture distinct courses BEFORE updating item state.
+    courses_to_fire = sorted({item.course for item in pending_items}) if not course else [course]
 
-    tickets = [create_kitchen_ticket_and_print_job(order, course=c) for c in courses_to_fire]
+    with transaction.atomic():
+        from inventory.services import consume_stock_for_order_items
+
+        consume_stock_for_order_items(order=order, order_items=pending_items, actor_user=order.waiter_user)
+        items_qs.update(status="SENT")
+        tickets = [create_kitchen_ticket_and_print_job(order, course=c) for c in courses_to_fire]
+
     return tickets

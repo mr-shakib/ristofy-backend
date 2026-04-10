@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Ingredient, StockMovement
+from .models import Ingredient, RecipeComponent, StockMovement
 
 
 @admin.register(Ingredient)
@@ -25,3 +25,10 @@ class StockMovementAdmin(admin.ModelAdmin):
 	)
 	list_filter = ("tenant", "branch", "movement_type")
 	search_fields = ("ingredient__name", "reference", "reason")
+
+
+@admin.register(RecipeComponent)
+class RecipeComponentAdmin(admin.ModelAdmin):
+	list_display = ("id", "menu_item", "ingredient", "quantity", "tenant", "branch", "is_active")
+	list_filter = ("tenant", "branch", "is_active")
+	search_fields = ("menu_item__name", "ingredient__name")
