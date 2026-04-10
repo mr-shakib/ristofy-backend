@@ -30,6 +30,8 @@ Create an environment named RMS Local with these variables:
 - allergen_id =
 - schedule_id =
 - waitlist_id =
+- ingredient_id =
+- movement_id =
 
 ### 1.2 Common Headers
 
@@ -49,6 +51,9 @@ For public endpoints:
 - Users
 - Menu
 - Tables
+- Orders
+- Billing + Fiscal
+- Inventory
 
 ## 2. Quick End-to-End Test Flow in Postman
 
@@ -1861,6 +1866,151 @@ Request body:
 Behavior:
 
 - Updates existing fiscal transaction status and optional response payload.
+
+## 3.33 Inventory (Phase 7 - Implemented Core Scope)
+
+### Ingredient List/Create
+
+- Method: GET, POST
+- URL: {{base_url}}/inventory/ingredients
+- Auth: Yes (OWNER or MANAGER)
+
+Create request body:
+
+```json
+{
+  "branch": 20,
+  "name": "Flour",
+  "sku": "FLR-001",
+  "unit": "KG",
+  "current_stock": "10.000",
+  "min_stock_level": "3.000",
+  "is_active": true
+}
+```
+
+Create success response (201):
+
+```json
+{
+  "id": 1,
+  "tenant": 10,
+  "branch": 20,
+  "name": "Flour",
+  "sku": "FLR-001",
+  "unit": "KG",
+  "current_stock": "10.000",
+  "min_stock_level": "3.000",
+  "is_active": true,
+  "created_at": "2026-04-10T17:00:00.000000Z",
+  "updated_at": "2026-04-10T17:00:00.000000Z"
+}
+```
+
+Supported list filters:
+
+- `branch`
+- `is_active`
+- `q` (ingredient name contains)
+
+### Ingredient Detail/Update/Delete
+
+- Method: GET, PATCH, DELETE
+- URL: {{base_url}}/inventory/ingredients/{{ingredient_id}}
+- Auth: Yes (OWNER or MANAGER)
+
+Tenant isolation:
+
+- Returns 404 when ingredient does not belong to caller tenant.
+
+### Stock Movement Ledger List/Create
+
+- Method: GET, POST
+- URL: {{base_url}}/inventory/movements
+- Auth: Yes (OWNER or MANAGER)
+
+Create request body:
+
+```json
+{
+  "ingredient": 1,
+  "movement_type": "STOCK_OUT",
+  "quantity": "2.000",
+  "reason": "Kitchen usage",
+  "reference": "ORD-1042"
+}
+```
+
+Create success response (201):
+
+```json
+{
+  "id": 5,
+  "tenant": 10,
+  "branch": 20,
+  "ingredient": 1,
+  "movement_type": "STOCK_OUT",
+  "quantity": "2.000",
+  "stock_before": "10.000",
+  "stock_after": "8.000",
+  "reason": "Kitchen usage",
+  "reference": "ORD-1042",
+  "created_by": 30,
+  "created_at": "2026-04-10T17:10:00.000000Z"
+}
+```
+
+Rules:
+
+- `quantity` must be greater than zero.
+- Movement write is atomic.
+- Resulting stock cannot go below zero (400).
+
+Supported list filters:
+
+- `branch`
+- `ingredient`
+- `movement_type`
+
+### Low-Stock Report
+
+- Method: GET
+- URL: {{base_url}}/inventory/reports/low-stock
+- Auth: Yes (OWNER or MANAGER)
+
+Optional filters:
+
+- `branch`
+
+Success response (200, paginated):
+
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "tenant": 10,
+      "branch": 20,
+      "name": "Flour",
+      "sku": "FLR-001",
+      "unit": "KG",
+      "current_stock": "2.000",
+      "min_stock_level": "3.000",
+      "shortage": "1.000",
+      "updated_at": "2026-04-10T17:12:00.000000Z"
+    }
+  ]
+}
+```
+
+Common inventory errors:
+
+- 400 when branch or ingredient belongs to another tenant.
+- 400 when stock movement would make stock negative.
+- 403 when caller role is not OWNER/MANAGER.
 
 ## 5. Common Troubleshooting
 

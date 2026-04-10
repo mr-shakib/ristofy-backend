@@ -54,19 +54,30 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Step C/D implemented: apply-coperto, apply-discount, finalize, and pay endpoints.
 	- Payment model implemented; bill transitions to PAID when cumulative amount_paid reaches grand_total.
 	- Billing API tests expanded for action/state transition coverage.
-	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (125 tests) using Python 3.14 + SQLite override.
+	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (125 tests) using Python 3.14 with PostgreSQL.
 - Phase 6: Completed
 	- Fiscal command orchestration model implemented via FiscalTransaction.
 	- Receipt lifecycle implemented: send-to-fiscal, receipt detail, reprint, refund.
 	- Z report sync/status endpoints implemented.
 	- Bridge fiscal acknowledgement endpoint implemented.
 	- Tenant isolation and OWNER/MANAGER permission checks enforced across fiscal endpoints.
+- Phase 7: Completed (core scope)
+	- Ingredient and StockMovement models implemented with strict tenant/branch scoping.
+	- Inventory API implemented:
+		- GET/POST /api/v1/inventory/ingredients
+		- GET/PATCH/DELETE /api/v1/inventory/ingredients/{id}
+		- GET/POST /api/v1/inventory/movements
+		- GET /api/v1/inventory/reports/low-stock
+	- Stock ledger writes are atomic and reject negative resulting stock.
+	- Inventory API tests added for tenant isolation, role enforcement, movement validation, and low-stock reporting.
+	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (133 tests) using Python 3.14 with PostgreSQL.
 
 ## 1.2 Status Audit Snapshot (2026-04-10)
 
-- Code and docs are aligned for completed scope through Phase 6.
+- Code and docs are aligned for completed core scope through Phase 7.
 - Billing Step A-D and fiscal integration flows are implemented in code (models, migrations, endpoints, tests).
-- Remaining billing enhancements (for example split-bill flows) are optional and outside completed Phase 6 scope.
+- Inventory Phase 7 core scope is implemented in code (models, migration, endpoints, tests).
+- Remaining inventory enhancements (for example recipe mapping and auto-deduction on order acceptance) are outside completed core scope.
 - Default `.venv` in this workspace is Python 3.11 (not compatible with Django 6.0.4); local validation was executed via Python 3.14 virtualenv.
 
 ## 2. Target Tech Stack
@@ -639,13 +650,34 @@ Mode:
 
 ### 5.9 Inventory
 
+Implemented in current core scope:
+
 #### Ingredient
 - id
 - tenant_id
+- branch_id
 - name
+- sku
 - unit
-- reorder_level
+- current_stock
+- min_stock_level
 - is_active
+
+#### StockMovement
+- id
+- tenant_id
+- branch_id
+- ingredient_id
+- movement_type
+- quantity
+- stock_before
+- stock_after
+- reason
+- reference
+- created_by
+- created_at
+
+Planned extensions:
 
 #### RecipeComponent
 - id
@@ -846,13 +878,14 @@ All endpoints are under /api/v1 and require tenant-scoped auth unless explicitly
 - GET /api/v1/print-jobs/{id}
 
 ### 6.10 Inventory and reports
-- GET /api/v1/ingredients
-- POST /api/v1/ingredients
-- PATCH /api/v1/ingredients/{id}
+- GET /api/v1/inventory/ingredients
+- POST /api/v1/inventory/ingredients
+- GET /api/v1/inventory/ingredients/{id}
+- PATCH /api/v1/inventory/ingredients/{id}
+- DELETE /api/v1/inventory/ingredients/{id}
 - GET /api/v1/inventory/movements
-- POST /api/v1/inventory/adjust
-- POST /api/v1/inventory/receive
-- GET /api/v1/inventory/low-stock
+- POST /api/v1/inventory/movements
+- GET /api/v1/inventory/reports/low-stock
 - GET /api/v1/reports/daily-sales
 - GET /api/v1/reports/sales-by-category
 - GET /api/v1/reports/sales-by-table
@@ -1008,10 +1041,8 @@ All endpoints are under /api/v1 and require tenant-scoped auth unless explicitly
 - Z report sync structure
 
 ### Phase 7 (Week 11): Inventory integration
-- Ingredient and recipe mapping
-- Auto-deduction on accepted order items
-- Manual adjustments and receiving flows
-- Low stock alerts and movement history
+- Completed (core scope): ingredient CRUD, stock movement ledger, low-stock report, and isolation test coverage
+- Remaining extension items: recipe mapping, auto-deduction on accepted order items, and receiving-specific flows
 
 ### Phase 8 (Week 12): Takeaway and loyalty
 - Takeaway order path and packaging fees

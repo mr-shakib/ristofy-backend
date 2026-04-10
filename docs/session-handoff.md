@@ -42,12 +42,25 @@ See docs/backend-roadmap.md for full detail. Summary:
 	- POST `/api/v1/integrations/bridge/fiscal-ack`
 - Fiscal tests added for send/reprint/refund/z-report/ack + isolation + permissions.
 
+### Phase 7 (Completed — core scope)
+- **Ingredient model** implemented: tenant, branch, name, sku, unit, current_stock, min_stock_level, is_active.
+- **StockMovement model** implemented: append-only movement ledger with `stock_before`/`stock_after` snapshots.
+- **Inventory API implemented**:
+	- GET/POST `/api/v1/inventory/ingredients`
+	- GET/PATCH/DELETE `/api/v1/inventory/ingredients/{id}`
+	- GET/POST `/api/v1/inventory/movements`
+	- GET `/api/v1/inventory/reports/low-stock`
+- **Stock safety rule** implemented: stock movement writes are atomic and reject negative resulting stock.
+- **Tests added** for role permissions, tenant isolation on writes/reads, low-stock filtering, and movement constraints.
+- **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test inventory`, and full `manage.py test` passed (133 tests total) using Python 3.14 with PostgreSQL.
+
 ## 2) New Migrations
 
 - orders/migrations/0005_buffetplan_buffetsession_wastelog_buffetround.py
 - billing/migrations/0001_initial.py
 - billing/migrations/0002_payment.py
 - billing/migrations/0003_receipt_fiscaltransaction_refund.py
+- inventory/migrations/0001_initial.py
 
 ## 3) Phase 4 API Surface
 
@@ -71,16 +84,19 @@ For payloads, see docs/api-postman-guide.md §3.27–3.30.
 - Fiscal integration currently uses simulated completion flow (no real device/bridge transport yet).
 - Default project `.venv` is Python 3.11 (incompatible with pinned Django 6.0.4); local validation was executed using a Python 3.14 virtualenv.
 
-## 5) Where To Start Next (Phase 7 — Inventory Integration)
+## 5) Where To Start Next (Post-Phase 7 Core)
 
-### Phase 5 + 6: Completed
-- Billing core and fiscal integration API surface implemented and tested.
-
-### Next Priority (Phase 7)
+### Phase 7 core scope: Completed
 - Ingredient and stock core models
 - Stock movement ledger endpoints
 - Low-stock report endpoint
 - Tests for tenant/branch isolation on inventory writes
+
+### Next Priority (Phase 7 extension / Phase 8 prep)
+- Recipe mapping between menu items and ingredients
+- Auto-deduction from stock on accepted/fired order items
+- Receiving-specific movement flow and optional supplier linkage
+- Inventory usage analytics to feed reporting phase
 
 ## 6) Next Session Quick Commands
 
@@ -91,16 +107,16 @@ For payloads, see docs/api-postman-guide.md §3.27–3.30.
 ./venv/bin/python manage.py test
 
 # Windows (PowerShell)
-.\.venv\Scripts\python.exe manage.py check
-.\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
-.\.venv\Scripts\python.exe manage.py test
+.\.venv314\Scripts\python.exe manage.py check
+.\.venv314\Scripts\python.exe manage.py makemigrations --check --dry-run
+.\.venv314\Scripts\python.exe manage.py test
 ```
 
-Note: for this repository's pinned Django 6.0.4, use Python 3.12+.
+Note: the default `.venv` is Python 3.11 and incompatible with pinned Django 6.0.4. Use `.venv314` (Python 3.14) or any Python 3.12+ environment.
 
 ## 7) Copy-Paste Prompt For Next Session
 
-"Continue from docs/session-handoff.md. Phase 6 fiscal integration is complete. Start Phase 7 inventory integration with Ingredient/stock movement core models, low-stock endpoint, strict tenant/branch isolation, and test coverage. Update docs and run check + makemigrations --check --dry-run + tests."
+"Continue from docs/session-handoff.md. Phase 7 core inventory is complete (ingredients, stock movements, low-stock report). Implement the next slice: recipe mapping + stock auto-deduction on order acceptance/fire, with strict tenant isolation and tests. Update docs and run check + makemigrations --check --dry-run + tests."
 
 ## 8) Definition Of Done For Phase 5
 
@@ -114,5 +130,8 @@ Note: for this repository's pinned Django 6.0.4, use Python 3.12+.
 - Verified in code: billing Step A-D endpoints and payment workflow are implemented.
 - Verified in code: fiscal integration endpoints (send-to-fiscal, receipt actions, z-report sync/status, bridge ack) are implemented.
 - Verified migrations added: billing/migrations/0001_initial.py, billing/migrations/0002_payment.py, billing/migrations/0003_receipt_fiscaltransaction_refund.py.
+- Verified in code: inventory core endpoints implemented (ingredients CRUD, stock movements, low-stock report) with tenant isolation.
+- Verified migration added: inventory/migrations/0001_initial.py.
+- Validation rerun with PostgreSQL and Python 3.14: 133 tests passing.
 - Known local environment issue: Python 3.11 is incompatible with pinned Django 6.0.4.
-- Next implementation priority: Phase 7 inventory integration.
+- Next implementation priority: Phase 7 extension (recipe mapping + auto-deduction).
