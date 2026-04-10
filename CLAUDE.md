@@ -27,7 +27,7 @@ Run server:
 | `users` | User, PIN auth, session, activity logs |
 | `menu` | Category, Item, Allergen, Schedule |
 | `tables` | FloorPlan, DiningTable, Reservation, Waitlist |
-| `orders` | Order lifecycle, OrderItem, KitchenTicket, Buffet flows |
+| `orders` | Order lifecycle, OrderItem, KitchenTicket, Buffet flows, Takeaway, Loyalty |
 | `billing` | Bill, Payment, Receipt, FiscalTransaction, Refund |
 | `printers` | Printer, PrintJob (Phase 6+) |
 | `inventory` | Ingredient, RecipeComponent, StockMovement, receiving + usage analytics |
@@ -43,7 +43,8 @@ Run server:
 - **Phase 5** — Complete: billing core (bill creation from order, coperto/discount/finalize/pay)
 - **Phase 6** — Complete: fiscal integration API (send-to-fiscal, receipt actions, z-report, bridge fiscal ack)
 - **Phase 7** — Complete: inventory core + recipe mapping + receiving flow + usage analytics + fire-flow auto-deduction
-- **Phase 8** — Next: takeaway and loyalty
+- **Phase 8** — Complete: takeaway lifecycle + packaging/extra fees + customer loyalty profile/visits/eligibility
+- **Phase 9** — Next: reporting and KPI snapshots
 
 ## Coding Conventions
 
@@ -127,11 +128,11 @@ Run a specific app: `./venv/bin/python manage.py test orders`
 - Default project `.venv` is Python 3.11, while pinned `Django==6.0.4` requires Python 3.12+
 - PrintJob transport is still pending; jobs are queued but not yet delivered through real bridge/device integration
 
-## Next Phase Plan (Phase 8)
+## Next Phase Plan (Phase 9)
 See `docs/session-handoff.md` §5 for current implementation priority.
 
 Targets for next implementation slice:
-- Takeaway order lifecycle endpoints
-- Packaging/extra fee application rules
-- Customer loyalty profile and visit tracking
-- Loyalty eligibility endpoint with tenant/branch isolation tests
+- Daily report snapshots
+- Sales reports by category/table/waiter/VAT
+- Buffet + branch comparison reports
+- Report caching and refresh strategy

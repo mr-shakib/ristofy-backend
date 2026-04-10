@@ -33,6 +33,8 @@ Create an environment named RMS Local with these variables:
 - ingredient_id =
 - movement_id =
 - recipe_id =
+- takeaway_id =
+- customer_phone =
 
 ### 1.2 Common Headers
 
@@ -2127,6 +2129,108 @@ Rules:
 - Deduction is based on `recipe_component.quantity * order_item.quantity` aggregated per ingredient.
 - Stock deduction and item status update run in one transaction.
 - If stock is insufficient, request returns 400 and no item status/ticket side effects are committed.
+
+## 3.34 Takeaway and Loyalty (Phase 8 - Implemented)
+
+### Create Takeaway Order
+
+- Method: POST
+- URL: {{base_url}}/takeaway/orders
+- Auth: Yes (WAITER/CASHIER/MANAGER/OWNER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "pickup_name": "Mario Rossi",
+  "pickup_phone": "+39000111",
+  "customer_name": "Mario Rossi",
+  "customer_phone": "+39000111",
+  "packaging_fee": "1.50",
+  "extra_fee": "0.50",
+  "items": [
+    {
+      "menu_item": 11,
+      "quantity": 2
+    }
+  ]
+}
+```
+
+Behavior:
+
+- Creates underlying `Order` with channel `TAKEAWAY`.
+- Adds packaging/extra fees as non-kitchen order lines.
+- Creates/updates customer record by phone when provided.
+
+### Get Takeaway Detail
+
+- Method: GET
+- URL: {{base_url}}/takeaway/orders/{{takeaway_id}}
+- Auth: Yes (WAITER/CASHIER/MANAGER/OWNER)
+
+Tenant isolation:
+
+- Returns 404 outside tenant scope.
+
+### Mark Takeaway Ready
+
+- Method: POST
+- URL: {{base_url}}/takeaway/orders/{{takeaway_id}}/ready
+- Auth: Yes (WAITER/CASHIER/MANAGER/OWNER)
+
+Rules:
+
+- Allowed only from `PREPARING` status.
+- Rejects when order still has `PENDING` items.
+
+### Loyalty Customer Lookup By Phone
+
+- Method: GET
+- URL: {{base_url}}/loyalty/customers/{{customer_phone}}
+- Auth: Yes (WAITER/CASHIER/MANAGER/OWNER)
+
+Success response includes customer profile, aggregate stats, and recent visits.
+
+### Record Loyalty Visit
+
+- Method: POST
+- URL: {{base_url}}/loyalty/visits
+- Auth: Yes (WAITER/CASHIER/MANAGER/OWNER)
+
+Request body:
+
+```json
+{
+  "branch": 20,
+  "phone": "+39000111",
+  "full_name": "Mario Rossi",
+  "spend_total": "18.00"
+}
+```
+
+Behavior:
+
+- Creates customer automatically when `customer_id` is not supplied.
+- Records visit event for loyalty statistics.
+
+### Loyalty Eligibility
+
+- Method: GET
+- URL: {{base_url}}/loyalty/eligibility?phone={{customer_phone}}
+- Auth: Yes (WAITER/CASHIER/MANAGER/OWNER)
+
+Behavior:
+
+- Evaluates active loyalty rules (`VISIT_COUNT`, `SPEND_TOTAL`).
+- Returns `eligible`, reason, customer stats, and matched reward rule.
+
+Common Phase 8 errors:
+
+- 400 when takeaway is marked ready with pending items.
+- 400 when branch/order/customer is outside tenant scope.
+- 403 when caller role is `KITCHEN`.
 
 ## 5. Common Troubleshooting
 

@@ -14,6 +14,9 @@ from .buffet_views import (
 from .views import (
     KitchenTicketListView,
     KitchenTicketPreparedView,
+    LoyaltyCustomerByPhoneView,
+    LoyaltyEligibilityView,
+    LoyaltyVisitCreateView,
     OrderCallWaiterView,
     OrderCancelView,
     OrderCompleteView,
@@ -26,6 +29,9 @@ from .views import (
     OrderListCreateView,
     OrderRequestBillView,
     OrderSendToKitchenView,
+    TakeawayOrderCreateView,
+    TakeawayOrderDetailView,
+    TakeawayOrderReadyView,
 )
 
 urlpatterns = [
@@ -59,4 +65,11 @@ urlpatterns = [
     # Waste and analytics
     path("waste-logs", WasteLogCreateView.as_view(), name="waste-log-create"),
     path("buffet/analytics", BuffetAnalyticsView.as_view(), name="buffet-analytics"),
+    # Phase 8 takeaway and loyalty
+    path("takeaway/orders", TakeawayOrderCreateView.as_view(), name="takeaway-order-create"),
+    path("takeaway/orders/<int:pk>", TakeawayOrderDetailView.as_view(), name="takeaway-order-detail"),
+    path("takeaway/orders/<int:pk>/ready", TakeawayOrderReadyView.as_view(), name="takeaway-order-ready"),
+    path("loyalty/customers/<str:phone>", LoyaltyCustomerByPhoneView.as_view(), name="loyalty-customer-by-phone"),
+    path("loyalty/visits", LoyaltyVisitCreateView.as_view(), name="loyalty-visit-create"),
+    path("loyalty/eligibility", LoyaltyEligibilityView.as_view(), name="loyalty-eligibility"),
 ]

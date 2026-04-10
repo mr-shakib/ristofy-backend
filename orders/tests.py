@@ -13,6 +13,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from menu.models import MenuCategory, MenuItem
 from tables.models import DiningTable, FloorPlan
 from tenants.models import Branch, Tenant
+from .models import Customer, CustomerVisit, LoyaltyRule, Order, TakeawayOrder
 
 User = get_user_model()
 
@@ -747,3 +748,190 @@ class OrderPhase3CompleteTests(APITestCase):
         res = self.client.get("/api/v1/kitchen/tickets?course=STARTER")
         self.assertEqual(res.data["count"], 1)
         self.assertEqual(res.data["results"][0]["course"], "STARTER")
+
+
+class Phase8TakeawayLoyaltyTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Tenant Phase8")
+        self.branch = Branch.objects.create(tenant=self.tenant, name="Main")
+
+        self.owner = User.objects.create_user(
+            username="owner_p8",
+            password="StrongPass123",
+            role=User.Role.OWNER,
+            tenant=self.tenant,
+            branch=self.branch,
+        )
+        self.waiter = User.objects.create_user(
+            username="waiter_p8",
+            password="StrongPass123",
+            role=User.Role.WAITER,
+            tenant=self.tenant,
+            branch=self.branch,
+        )
+        self.cashier = User.objects.create_user(
+            username="cashier_p8",
+            password="StrongPass123",
+            role=User.Role.CASHIER,
+            tenant=self.tenant,
+            branch=self.branch,
+        )
+        self.kitchen = User.objects.create_user(
+            username="kitchen_p8",
+            password="StrongPass123",
+            role=User.Role.KITCHEN,
+            tenant=self.tenant,
+            branch=self.branch,
+        )
+
+        self.category = MenuCategory.objects.create(
+            tenant=self.tenant,
+            branch=self.branch,
+            name="Takeaway",
+            sort_order=1,
+        )
+        self.menu_item = MenuItem.objects.create(
+            tenant=self.tenant,
+            branch=self.branch,
+            category=self.category,
+            name="Burger",
+            base_price="9.00",
+            vat_rate="10.00",
+        )
+
+        self.other_tenant = Tenant.objects.create(name="Other Phase8")
+        self.other_branch = Branch.objects.create(tenant=self.other_tenant, name="Other")
+        self.other_owner = User.objects.create_user(
+            username="owner_p8_other",
+            password="StrongPass123",
+            role=User.Role.OWNER,
+            tenant=self.other_tenant,
+            branch=self.other_branch,
+        )
+
+    def _auth(self, user):
+        access = str(RefreshToken.for_user(user).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    def _create_takeaway(self, *, user=None, packaging_fee="0.00", extra_fee="0.00"):
+        self._auth(user or self.waiter)
+        res = self.client.post(
+            "/api/v1/takeaway/orders",
+            {
+                "branch": self.branch.id,
+                "pickup_name": "Mario Rossi",
+                "pickup_phone": "+39000111",
+                "customer_name": "Mario Rossi",
+                "customer_phone": "+39000111",
+                "packaging_fee": packaging_fee,
+                "extra_fee": extra_fee,
+                "items": [{"menu_item": self.menu_item.id, "quantity": 2}],
+            },
+            format="json",
+        )
+        return res
+
+    def test_create_takeaway_order_with_fees(self):
+        res = self._create_takeaway(packaging_fee="1.50", extra_fee="0.50")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data["status"], TakeawayOrder.Status.PREPARING)
+        self.assertEqual(res.data["order"]["channel"], Order.Channel.TAKEAWAY)
+        item_names = [item["item_name"] for item in res.data["order"]["items"]]
+        self.assertIn("Packaging Fee", item_names)
+        self.assertIn("Extra Fee", item_names)
+
+    def test_takeaway_detail_tenant_isolation(self):
+        res = self._create_takeaway()
+        takeaway_id = res.data["id"]
+
+        self._auth(self.other_owner)
+        detail = self.client.get(f"/api/v1/takeaway/orders/{takeaway_id}")
+        self.assertEqual(detail.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_mark_takeaway_ready_requires_no_pending_items(self):
+        res = self._create_takeaway()
+        takeaway_id = res.data["id"]
+        order_id = res.data["order"]["id"]
+
+        ready_fail = self.client.post(f"/api/v1/takeaway/orders/{takeaway_id}/ready")
+        self.assertEqual(ready_fail.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.client.post(f"/api/v1/orders/{order_id}/fire")
+        ready_ok = self.client.post(f"/api/v1/takeaway/orders/{takeaway_id}/ready")
+        self.assertEqual(ready_ok.status_code, status.HTTP_200_OK)
+        self.assertEqual(ready_ok.data["status"], TakeawayOrder.Status.READY)
+
+    def test_cashier_can_use_takeaway_and_loyalty(self):
+        takeaway = self._create_takeaway(user=self.cashier)
+        self.assertEqual(takeaway.status_code, status.HTTP_201_CREATED)
+
+        visit = self.client.post(
+            "/api/v1/loyalty/visits",
+            {
+                "branch": self.branch.id,
+                "phone": "+39000111",
+                "full_name": "Mario Rossi",
+                "spend_total": "18.00",
+            },
+            format="json",
+        )
+        self.assertEqual(visit.status_code, status.HTTP_201_CREATED)
+
+    def test_kitchen_forbidden_from_phase8_endpoints(self):
+        self._auth(self.kitchen)
+        takeaway = self.client.post(
+            "/api/v1/takeaway/orders",
+            {
+                "branch": self.branch.id,
+                "pickup_name": "N",
+                "pickup_phone": "+39123",
+                "items": [{"menu_item": self.menu_item.id, "quantity": 1}],
+            },
+            format="json",
+        )
+        self.assertEqual(takeaway.status_code, status.HTTP_403_FORBIDDEN)
+
+        visit = self.client.post(
+            "/api/v1/loyalty/visits",
+            {
+                "branch": self.branch.id,
+                "phone": "+39000111",
+                "full_name": "Mario Rossi",
+                "spend_total": "10.00",
+            },
+            format="json",
+        )
+        self.assertEqual(visit.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_loyalty_customer_and_eligibility(self):
+        self._auth(self.waiter)
+        visit_1 = self.client.post(
+            "/api/v1/loyalty/visits",
+            {
+                "branch": self.branch.id,
+                "phone": "+39000111",
+                "full_name": "Mario Rossi",
+                "spend_total": "15.00",
+            },
+            format="json",
+        )
+        self.assertEqual(visit_1.status_code, status.HTTP_201_CREATED)
+
+        LoyaltyRule.objects.create(
+            tenant=self.tenant,
+            name="Visit 1 reward",
+            rule_type=LoyaltyRule.RuleType.VISIT_COUNT,
+            threshold_value="1.00",
+            reward_type=LoyaltyRule.RewardType.PERCENT_DISCOUNT,
+            reward_value="10.00",
+            is_active=True,
+        )
+
+        customer = self.client.get("/api/v1/loyalty/customers/+39000111")
+        self.assertEqual(customer.status_code, status.HTTP_200_OK)
+        self.assertEqual(customer.data["stats"]["total_visits"], 1)
+
+        eligibility = self.client.get("/api/v1/loyalty/eligibility?phone=+39000111")
+        self.assertEqual(eligibility.status_code, status.HTTP_200_OK)
+        self.assertTrue(eligibility.data["eligible"])
+        self.assertEqual(eligibility.data["matched_rule"]["name"], "Visit 1 reward")

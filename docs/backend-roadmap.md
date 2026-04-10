@@ -77,12 +77,22 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Auto-deduction from inventory is enforced on order fire/send-to-kitchen based on active recipe components.
 	- Inventory and order integration tests added for tenant isolation, role enforcement, movement validation, low-stock reporting, recipe mapping, receiving flow, usage analytics, and fire-flow stock guards.
 	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (140 tests) using Python 3.14 with PostgreSQL.
+- Phase 8: Completed
+	- Customer, CustomerVisit, LoyaltyRule, and TakeawayOrder models implemented with tenant/branch isolation.
+	- Order model extended with optional customer relation for takeaway and loyalty linkage.
+	- Takeaway API implemented: create, detail, and ready actions.
+	- Packaging and extra fee handling implemented as non-kitchen order lines for billing compatibility.
+	- Loyalty API implemented: customer lookup by phone, visit recording, and eligibility evaluation.
+	- Loyalty eligibility evaluates active visit-count and spend-total rules.
+	- Role boundaries validated: waiter/cashier allowed, kitchen forbidden.
+	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (146 tests) using Python 3.14 with PostgreSQL.
 
 ## 1.2 Status Audit Snapshot (2026-04-11)
 
-- Code and docs are aligned for completed scope through Phase 7.
+- Code and docs are aligned for completed scope through Phase 8.
 - Billing Step A-D and fiscal integration flows are implemented in code (models, migrations, endpoints, tests).
 - Inventory Phase 7 full scope is implemented in code (models, migrations, endpoints, tests, and order-flow integration).
+- Takeaway and loyalty Phase 8 scope is implemented in code (models, migrations, endpoints, tests).
 - Default `.venv` in this workspace is Python 3.11 (not compatible with Django 6.0.4); local validation was executed via Python 3.14 virtualenv.
 
 ## 2. Target Tech Stack
@@ -1057,9 +1067,9 @@ All endpoints are under /api/v1 and require tenant-scoped auth unless explicitly
 - Completed: auto-deduction on order fire/send-to-kitchen with stock safety rollback behavior
 
 ### Phase 8 (Week 12): Takeaway and loyalty
-- Takeaway order path and packaging fees
-- Customer profile and visit history
-- Loyalty eligibility endpoint
+- Completed: takeaway order path and ready lifecycle
+- Completed: packaging and extra fee application on takeaway orders
+- Completed: customer profile lookup, visit history capture, and loyalty eligibility endpoint
 
 ### Phase 9 (Week 13): Reporting
 - Daily report snapshots

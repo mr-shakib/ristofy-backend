@@ -5,6 +5,50 @@ from django.db.models import Max, Q
 from django.utils import timezone
 
 
+class Customer(models.Model):
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="customers")
+    full_name = models.CharField(max_length=160)
+    phone = models.CharField(max_length=40)
+    email = models.EmailField(blank=True)
+    preferred_language = models.CharField(max_length=12, default="it")
+    marketing_consent = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["full_name", "id"]
+        unique_together = ("tenant", "phone")
+
+    def __str__(self):
+        return f"{self.full_name} ({self.phone})"
+
+
+class LoyaltyRule(models.Model):
+    class RuleType(models.TextChoices):
+        VISIT_COUNT = "VISIT_COUNT", "Visit Count"
+        SPEND_TOTAL = "SPEND_TOTAL", "Spend Total"
+
+    class RewardType(models.TextChoices):
+        PERCENT_DISCOUNT = "PERCENT_DISCOUNT", "Percent Discount"
+        FIXED_DISCOUNT = "FIXED_DISCOUNT", "Fixed Discount"
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="loyalty_rules")
+    name = models.CharField(max_length=160)
+    rule_type = models.CharField(max_length=20, choices=RuleType.choices)
+    threshold_value = models.DecimalField(max_digits=12, decimal_places=2)
+    reward_type = models.CharField(max_length=20, choices=RewardType.choices)
+    reward_value = models.DecimalField(max_digits=12, decimal_places=2)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["threshold_value", "id"]
+
+    def __str__(self):
+        return f"{self.name} ({self.rule_type})"
+
+
 class Order(models.Model):
     class Status(models.TextChoices):
         OPEN = "OPEN", "Open"
@@ -30,6 +74,13 @@ class Order(models.Model):
     )
     waiter_user = models.ForeignKey(
         "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders",
+    )
+    customer = models.ForeignKey(
+        Customer,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -131,6 +182,57 @@ class KitchenTicket(models.Model):
     def __str__(self):
         course_label = f" [{self.course}]" if self.course else ""
         return f"Ticket #{self.pk} Order #{self.order_id}{course_label} [{self.status}]"
+
+
+class TakeawayOrder(models.Model):
+    class Status(models.TextChoices):
+        PREPARING = "PREPARING", "Preparing"
+        READY = "READY", "Ready"
+        PICKED_UP = "PICKED_UP", "Picked Up"
+        CANCELED = "CANCELED", "Canceled"
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="takeaway_orders")
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="takeaway_orders")
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="takeaway")
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="takeaway_orders",
+    )
+    pickup_name = models.CharField(max_length=160)
+    pickup_phone = models.CharField(max_length=40)
+    packaging_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    extra_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    scheduled_for = models.DateTimeField(null=True, blank=True)
+    ready_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PREPARING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Takeaway #{self.id} ({self.status})"
+
+
+class CustomerVisit(models.Model):
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="customer_visits")
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="customer_visits")
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="visits")
+    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_visits")
+    visit_at = models.DateTimeField(default=timezone.now)
+    spend_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-visit_at", "-id"]
+
+    def __str__(self):
+        return f"Visit #{self.id} - {self.customer.full_name}"
 
 
 # ─── Phase 4: Buffet ──────────────────────────────────────────────────────────

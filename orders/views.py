@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -15,14 +16,21 @@ from .events import (
     TICKET_PRINT_REQUESTED,
     publish_order_event,
 )
-from .models import KitchenTicket, Order, OrderItem
+from .models import Customer, CustomerVisit, KitchenTicket, Order, OrderItem, TakeawayOrder
 from .serializers import (
     KitchenTicketSerializer,
+    LoyaltyEligibilityQuerySerializer,
+    LoyaltyVisitCreateSerializer,
     OrderCreateSerializer,
     OrderItemAddSerializer,
     OrderItemSerializer,
     OrderItemUpdateSerializer,
     OrderSerializer,
+    TakeawayOrderCreateSerializer,
+    TakeawayOrderSerializer,
+    loyalty_customer_payload,
+    loyalty_eligibility_payload,
+    normalize_phone,
 )
 from .services import fire_order_items
 
@@ -571,3 +579,169 @@ class KitchenTicketPreparedView(APIView):
         publish_order_event(TICKET_PRINT_REQUESTED, ticket.order, ticket_id=ticket.id)
 
         return Response(KitchenTicketSerializer(ticket).data, status=status.HTTP_200_OK)
+
+
+class TakeawayOrderCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def post(self, request):
+        serializer = TakeawayOrderCreateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        takeaway = serializer.save()
+
+        log_activity(
+            actor_user=request.user,
+            action="takeaway_order_created",
+            entity_type="takeaway_order",
+            entity_id=str(takeaway.id),
+            tenant=request.user.tenant,
+            branch=takeaway.branch,
+            metadata={
+                "order_id": takeaway.order_id,
+                "packaging_fee": str(takeaway.packaging_fee),
+                "extra_fee": str(takeaway.extra_fee),
+            },
+        )
+
+        output = (
+            TakeawayOrder.objects.filter(pk=takeaway.pk)
+            .select_related("tenant", "branch", "order", "customer")
+            .prefetch_related("order__items")
+            .get()
+        )
+        return Response(TakeawayOrderSerializer(output, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+class TakeawayOrderDetailView(generics.RetrieveAPIView):
+    serializer_class = TakeawayOrderSerializer
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def get_queryset(self):
+        return (
+            TakeawayOrder.objects.filter(tenant=self.request.user.tenant)
+            .select_related("tenant", "branch", "order", "customer")
+            .prefetch_related("order__items")
+        )
+
+
+class TakeawayOrderReadyView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def post(self, request, pk):
+        takeaway = (
+            TakeawayOrder.objects.filter(tenant=request.user.tenant)
+            .select_related("order", "branch")
+            .prefetch_related("order__items")
+            .filter(pk=pk)
+            .first()
+        )
+        if not takeaway:
+            return Response({"detail": "Takeaway order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if takeaway.status != TakeawayOrder.Status.PREPARING:
+            return Response({"detail": "Only preparing takeaway orders can be marked ready."}, status=status.HTTP_400_BAD_REQUEST)
+
+        pending_count = takeaway.order.items.filter(status="PENDING").count()
+        if pending_count > 0:
+            return Response(
+                {"detail": "Cannot mark ready while there are pending order items. Fire the order first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        takeaway.status = TakeawayOrder.Status.READY
+        takeaway.ready_at = timezone.now()
+        takeaway.save(update_fields=["status", "ready_at", "updated_at"])
+
+        log_activity(
+            actor_user=request.user,
+            action="takeaway_order_ready",
+            entity_type="takeaway_order",
+            entity_id=str(takeaway.id),
+            tenant=request.user.tenant,
+            branch=takeaway.branch,
+            metadata={"order_id": takeaway.order_id},
+        )
+
+        takeaway.refresh_from_db()
+        return Response(TakeawayOrderSerializer(takeaway, context={"request": request}).data, status=status.HTTP_200_OK)
+
+
+class LoyaltyCustomerByPhoneView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def get(self, request, phone):
+        normalized_phone = normalize_phone(phone)
+        customer = Customer.objects.filter(tenant=request.user.tenant, phone=normalized_phone).first()
+        if not customer and normalized_phone.startswith("+"):
+            customer = Customer.objects.filter(tenant=request.user.tenant, phone=normalized_phone[1:]).first()
+        if not customer:
+            return Response({"detail": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        branch = request.query_params.get("branch")
+        payload = loyalty_customer_payload(customer=customer, branch_id=branch)
+
+        recent_visits_qs = CustomerVisit.objects.filter(customer=customer, tenant=request.user.tenant).select_related("branch")
+        if branch:
+            recent_visits_qs = recent_visits_qs.filter(branch_id=branch)
+
+        payload["recent_visits"] = [
+            {
+                "id": visit.id,
+                "branch": visit.branch_id,
+                "visit_at": visit.visit_at,
+                "spend_total": f"{visit.spend_total:.2f}",
+                "order": visit.order_id,
+            }
+            for visit in recent_visits_qs.order_by("-visit_at")[:10]
+        ]
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class LoyaltyVisitCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def post(self, request):
+        serializer = LoyaltyVisitCreateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        visit = serializer.save()
+
+        log_activity(
+            actor_user=request.user,
+            action="loyalty_visit_recorded",
+            entity_type="customer_visit",
+            entity_id=str(visit.id),
+            tenant=request.user.tenant,
+            branch=visit.branch,
+            metadata={
+                "customer_id": visit.customer_id,
+                "order_id": visit.order_id,
+                "spend_total": str(visit.spend_total),
+            },
+        )
+
+        return Response(
+            {
+                "id": visit.id,
+                "tenant": visit.tenant_id,
+                "branch": visit.branch_id,
+                "customer": visit.customer_id,
+                "order": visit.order_id,
+                "visit_at": visit.visit_at,
+                "spend_total": f"{visit.spend_total:.2f}",
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class LoyaltyEligibilityView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+
+    def get(self, request):
+        query = LoyaltyEligibilityQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        payload = loyalty_eligibility_payload(
+            tenant=request.user.tenant,
+            phone=query.validated_data["phone"],
+            branch_id=query.validated_data.get("branch"),
+        )
+        return Response(payload, status=status.HTTP_200_OK)

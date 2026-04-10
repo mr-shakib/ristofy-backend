@@ -60,6 +60,23 @@ See docs/backend-roadmap.md for full detail. Summary:
 - **Tests added** for role permissions, tenant isolation on writes/reads, low-stock filtering, movement constraints, recipe mapping, receiving flow, usage analytics, and fire-flow stock rollback safety.
 - **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test inventory`, `manage.py test orders`, and full `manage.py test` passed (140 tests total) using Python 3.14 with PostgreSQL.
 
+### Phase 8 (Completed)
+- **Customer model** implemented with tenant-scoped profile data (name/phone/email/preferences).
+- **Loyalty models** implemented: CustomerVisit and LoyaltyRule.
+- **TakeawayOrder model** implemented and linked to core orders.
+- **Order model updated** with optional customer relation.
+- **Takeaway API implemented**:
+	- POST `/api/v1/takeaway/orders`
+	- GET `/api/v1/takeaway/orders/{id}`
+	- POST `/api/v1/takeaway/orders/{id}/ready`
+- **Loyalty API implemented**:
+	- GET `/api/v1/loyalty/customers/{phone}`
+	- POST `/api/v1/loyalty/visits`
+	- GET `/api/v1/loyalty/eligibility`
+- **Packaging and extra fee rules** implemented as non-kitchen order lines on takeaway creation.
+- **Role boundary enforcement** validated for waiter/cashier access and kitchen denial.
+- **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test orders`, and full `manage.py test` passed (146 tests total) using Python 3.14 with PostgreSQL.
+
 ## 2) New Migrations
 
 - orders/migrations/0005_buffetplan_buffetsession_wastelog_buffetround.py
@@ -68,6 +85,7 @@ See docs/backend-roadmap.md for full detail. Summary:
 - billing/migrations/0003_receipt_fiscaltransaction_refund.py
 - inventory/migrations/0001_initial.py
 - inventory/migrations/0002_alter_stockmovement_movement_type_recipecomponent.py
+- orders/migrations/0006_customer_order_customer_customervisit_loyaltyrule_and_more.py
 
 ## 3) Phase 4 API Surface
 
@@ -91,16 +109,16 @@ For payloads, see docs/api-postman-guide.md §3.27–3.30.
 - Fiscal integration currently uses simulated completion flow (no real device/bridge transport yet).
 - Default project `.venv` is Python 3.11 (incompatible with pinned Django 6.0.4); local validation was executed using a Python 3.14 virtualenv.
 
-## 5) Where To Start Next (Phase 8)
+## 5) Where To Start Next (Phase 9)
 
-### Phase 7: Completed
-- Inventory core and extension scope delivered in production-grade shape.
+### Phase 8: Completed
+- Takeaway and loyalty scope delivered in production-grade shape.
 
-### Next Priority (Phase 8 — Takeaway and loyalty)
-- Takeaway order path and packaging fees
-- Customer profile and visit history endpoints
-- Loyalty eligibility and visit accrual flow
-- Test coverage for tenant isolation and cashier/waiter role boundaries
+### Next Priority (Phase 9 — Reporting)
+- Daily report snapshots
+- Sales views by category/table/waiter/VAT
+- Buffet and branch comparison reports
+- Report cache + refresh strategy
 
 ## 6) Next Session Quick Commands
 
@@ -120,7 +138,7 @@ Note: the default `.venv` is Python 3.11 and incompatible with pinned Django 6.0
 
 ## 7) Copy-Paste Prompt For Next Session
 
-"Continue from docs/session-handoff.md. Phase 7 inventory is complete including recipe mapping, receiving flow, usage analytics, and auto-deduction on order fire. Start Phase 8 takeaway and loyalty with production-grade endpoints, strict tenant isolation, tests, and docs updates."
+"Continue from docs/session-handoff.md. Phase 8 takeaway and loyalty is complete with production-grade endpoints and tests. Start Phase 9 reporting (daily snapshots, sales dimensions, VAT, buffet/branch views, caching) with strict tenant isolation, tests, and docs updates."
 
 ## 8) Definition Of Done For Phase 5
 
@@ -137,6 +155,8 @@ Note: the default `.venv` is Python 3.11 and incompatible with pinned Django 6.0
 - Verified in code: inventory full phase endpoints implemented (ingredients, recipes, movements, receiving, low-stock, usage) with tenant isolation.
 - Verified in code: order fire/send-to-kitchen flow auto-deducts stock from active recipe components with rollback safety on insufficiency.
 - Verified migrations added: inventory/migrations/0001_initial.py and inventory/migrations/0002_alter_stockmovement_movement_type_recipecomponent.py.
-- Validation rerun with PostgreSQL and Python 3.14: 140 tests passing.
+- Verified in code: Phase 8 endpoints implemented (takeaway create/detail/ready, loyalty customer lookup, loyalty visits, loyalty eligibility).
+- Verified migration added: orders/migrations/0006_customer_order_customer_customervisit_loyaltyrule_and_more.py.
+- Validation rerun with PostgreSQL and Python 3.14: 146 tests passing.
 - Known local environment issue: Python 3.11 is incompatible with pinned Django 6.0.4.
-- Next implementation priority: Phase 8 takeaway and loyalty.
+- Next implementation priority: Phase 9 reporting.
