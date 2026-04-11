@@ -8,7 +8,7 @@ from rest_framework import serializers
 from menu.models import MenuItem
 from tenants.models import Branch
 
-from .models import Customer, CustomerVisit, KitchenTicket, LoyaltyRule, Order, OrderItem, TakeawayOrder
+from .models import Customer, CustomerVisit, KitchenTicket, LoyaltyRule, Order, OrderEvent, OrderItem, TakeawayOrder
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -186,6 +186,18 @@ class OrderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"customer": "Customer must belong to your tenant."})
 
         return attrs
+
+
+class OrderEventSerializer(serializers.ModelSerializer):
+    actor_username = serializers.CharField(source="actor_user.username", read_only=True)
+
+    class Meta:
+        model = OrderEvent
+        fields = [
+            "id", "order", "branch", "actor_user", "actor_username",
+            "event_type", "metadata_json", "created_at",
+        ]
+        read_only_fields = fields
 
 
 def normalize_phone(value: str) -> str:

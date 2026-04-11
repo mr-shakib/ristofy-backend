@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Ingredient, RecipeComponent, StockMovement
+from .models import Ingredient, PurchaseOrder, PurchaseOrderItem, RecipeComponent, StockMovement, Supplier
 
 
 class IngredientSerializer(serializers.ModelSerializer):
@@ -187,6 +187,83 @@ class ReceiveStockSerializer(serializers.Serializer):
             reason=reason,
             reference=validated_data.get("document_no", ""),
         )
+
+
+class SupplierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = [
+            "id", "tenant", "branch", "name", "contact_name",
+            "phone", "email", "address", "notes", "is_active",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "tenant", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        branch = attrs.get("branch", getattr(self.instance, "branch", None))
+        if branch and branch.tenant_id != request.user.tenant_id:
+            raise serializers.ValidationError({"branch": "Branch must belong to your tenant."})
+        return attrs
+
+
+class PurchaseOrderItemSerializer(serializers.ModelSerializer):
+    ingredient_name = serializers.CharField(source="ingredient.name", read_only=True)
+
+    class Meta:
+        model = PurchaseOrderItem
+        fields = [
+            "id", "ingredient", "ingredient_name",
+            "quantity_ordered", "quantity_received", "unit_cost",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class PurchaseOrderSerializer(serializers.ModelSerializer):
+    items = PurchaseOrderItemSerializer(many=True, read_only=True)
+    supplier_name = serializers.CharField(source="supplier.name", read_only=True)
+
+    class Meta:
+        model = PurchaseOrder
+        fields = [
+            "id", "tenant", "branch", "supplier", "supplier_name",
+            "po_number", "status", "expected_at", "notes",
+            "created_by", "items", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "tenant", "created_by", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        branch = attrs.get("branch", getattr(self.instance, "branch", None))
+        supplier = attrs.get("supplier", getattr(self.instance, "supplier", None))
+        if branch and branch.tenant_id != request.user.tenant_id:
+            raise serializers.ValidationError({"branch": "Branch must belong to your tenant."})
+        if supplier and supplier.tenant_id != request.user.tenant_id:
+            raise serializers.ValidationError({"supplier": "Supplier must belong to your tenant."})
+        return attrs
+
+
+class PurchaseOrderReceiveSerializer(serializers.Serializer):
+    items = serializers.ListField(
+        child=serializers.DictField(child=serializers.CharField()),
+        min_length=1,
+    )
+
+    def validate_items(self, value):
+        validated = []
+        for entry in value:
+            try:
+                item_id = int(entry["id"])
+                qty = float(entry["quantity_received"])
+            except (KeyError, ValueError, TypeError):
+                raise serializers.ValidationError(
+                    "Each item must have 'id' (int) and 'quantity_received' (number)."
+                )
+            if qty <= 0:
+                raise serializers.ValidationError("quantity_received must be greater than zero.")
+            validated.append({"id": item_id, "quantity_received": qty})
+        return validated
 
 
 class InventoryUsageQuerySerializer(serializers.Serializer):

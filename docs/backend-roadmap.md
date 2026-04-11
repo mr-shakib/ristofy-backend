@@ -119,16 +119,23 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Production readiness checklist written: `docs/runbooks/production-checklist.md` (10 sections, 35 gate items).
 	- Operations runbook written: `docs/runbooks/operations.md` (10 on-call scenarios with diagnosis and remediation steps).
 	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (179 tests) using Python 3.13 with PostgreSQL.
+- Production Completion (2026-04-11): All missing endpoints and models filled in across every app:
+	- **Tables**: TableSession + TableMergeSession models; open/close session, merge, split, live-status endpoints; TableSessionListView.
+	- **Menu**: MenuVariant, AddonGroup, AddonItem models + full CRUD endpoints; public CustomerMenuView (AllowAny).
+	- **Tenants**: Tenant PATCH endpoint; Branch detail/update/delete; SubscriptionPlan list; TenantSubscription get/patch; FeatureFlag CRUD. Tenant model extended with VAT, fiscal, timezone, currency fields.
+	- **Users**: UserDetailView (GET/PATCH/soft-delete); UserDetailView scoped to tenant.
+	- **Billing**: BillSplit model + POST `/api/v1/bills/{id}/split`.
+	- **Orders**: OrderEvent model with full lifecycle wiring (CREATED/HELD/FIRED/CANCELED/COMPLETED); GET `/api/v1/orders/{id}/events`.
+	- **Inventory**: Supplier + PurchaseOrder + PurchaseOrderItem models; CRUD for suppliers and purchase orders; POST `/api/v1/inventory/purchase-orders/{id}/receive`.
+	- **Printers**: PrinterRouteRule model; full Printer/Route/PrintJob CRUD; PrintJobReprintView; wired into core/urls.py.
+	- All new migrations generated and applied successfully.
+	- Full test suite passes: 179 tests, 0 failures.
 
 ## 1.2 Status Audit Snapshot (2026-04-11)
 
-- Code and docs are aligned for completed scope through Phase 11 (all 16 weeks delivered).
-- Billing Step A-D and fiscal integration flows are implemented in code (models, migrations, endpoints, tests).
-- Inventory Phase 7 full scope is implemented in code (models, migrations, endpoints, tests, and order-flow integration).
-- Takeaway and loyalty Phase 8 scope is implemented in code (models, migrations, endpoints, tests).
-- Reporting Phase 9 scope is implemented in code (snapshot model, endpoints, caching strategy, tests).
-- Offline sync Phase 10 scope is implemented in code (device, outbox, push/pull, conflict policy, tests).
-- Hardening Phase 11 scope is implemented (health probes, throttling, logging, load tests, runbooks).
+- All 11 phases complete plus production completion pass — every documented endpoint is now implemented.
+- No missing models or stub views remain across any app.
+- 179 tests passing with Python 3.13 and PostgreSQL.
 - Default `.venv` in this workspace is Python 3.11 (not compatible with Django 6.0.4); local validation was executed via Python 3.13 virtualenv.
 
 ## 2. Target Tech Stack

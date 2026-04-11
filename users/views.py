@@ -210,6 +210,42 @@ class UserListCreateView(generics.ListCreateAPIView):
         )
 
 
+class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def get_serializer_class(self):
+        return UserSerializer
+
+    def get_queryset(self):
+        return User.objects.filter(tenant=self.request.user.tenant).select_related("branch", "tenant")
+
+    def perform_update(self, serializer):
+        user = serializer.save()
+        log_activity(
+            actor_user=self.request.user,
+            action="user_updated",
+            entity_type="user",
+            entity_id=str(user.id),
+            tenant=self.request.user.tenant,
+            branch=self.request.user.branch,
+        )
+
+    def perform_destroy(self, instance):
+        if instance.id == self.request.user.id:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("You cannot delete your own account.")
+        log_activity(
+            actor_user=self.request.user,
+            action="user_deleted",
+            entity_type="user",
+            entity_id=str(instance.id),
+            tenant=self.request.user.tenant,
+            branch=self.request.user.branch,
+        )
+        instance.is_active = False
+        instance.save(update_fields=["is_active"])
+
+
 class SetUserPinView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

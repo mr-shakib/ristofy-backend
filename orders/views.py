@@ -16,12 +16,13 @@ from .events import (
     TICKET_PRINT_REQUESTED,
     publish_order_event,
 )
-from .models import Customer, CustomerVisit, KitchenTicket, Order, OrderItem, TakeawayOrder
+from .models import Customer, CustomerVisit, KitchenTicket, Order, OrderEvent, OrderItem, TakeawayOrder
 from .serializers import (
     KitchenTicketSerializer,
     LoyaltyEligibilityQuerySerializer,
     LoyaltyVisitCreateSerializer,
     OrderCreateSerializer,
+    OrderEventSerializer,
     OrderItemAddSerializer,
     OrderItemSerializer,
     OrderItemUpdateSerializer,
@@ -33,6 +34,16 @@ from .serializers import (
     normalize_phone,
 )
 from .services import fire_order_items
+
+
+def _record_order_event(order, event_type, actor_user, metadata=None):
+    OrderEvent.objects.create(
+        order=order,
+        branch=order.branch,
+        actor_user=actor_user,
+        event_type=event_type,
+        metadata_json=metadata or {},
+    )
 
 
 # ─── Order list/create ────────────────────────────────────────────────────────
@@ -79,6 +90,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
             tenant=self.request.user.tenant,
             branch=order.branch,
         )
+        _record_order_event(order, OrderEvent.EventType.CREATED, self.request.user)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -149,6 +161,7 @@ class OrderHoldView(APIView):
             tenant=request.user.tenant,
             branch=order.branch,
         )
+        _record_order_event(order, OrderEvent.EventType.HELD, request.user)
         publish_order_event(ORDER_HELD, order)
 
         return Response(OrderSerializer(order, context={"request": request}).data, status=status.HTTP_200_OK)
@@ -302,6 +315,7 @@ class OrderSendToKitchenView(APIView):
             tenant=request.user.tenant,
             branch=order.branch,
         )
+        _record_order_event(order, OrderEvent.EventType.FIRED, request.user)
         publish_order_event(ORDER_FIRED, order)
 
         order.refresh_from_db()
@@ -334,6 +348,7 @@ class OrderCancelView(APIView):
             tenant=request.user.tenant,
             branch=order.branch,
         )
+        _record_order_event(order, OrderEvent.EventType.CANCELED, request.user)
         publish_order_event(ORDER_CANCELED, order)
 
         return Response(OrderSerializer(order, context={"request": request}).data, status=status.HTTP_200_OK)
@@ -365,9 +380,27 @@ class OrderCompleteView(APIView):
             tenant=request.user.tenant,
             branch=order.branch,
         )
+        _record_order_event(order, OrderEvent.EventType.COMPLETED, request.user)
         publish_order_event(ORDER_COMPLETED, order)
 
         return Response(OrderSerializer(order, context={"request": request}).data, status=status.HTTP_200_OK)
+
+
+class OrderEventListView(generics.ListAPIView):
+    serializer_class = OrderEventSerializer
+    permission_classes = [permissions.IsAuthenticated, IsWaiterOrAbove]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        order_id = self.kwargs["pk"]
+        return (
+            OrderEvent.objects.filter(
+                order_id=order_id,
+                branch__tenant=self.request.user.tenant,
+            )
+            .select_related("actor_user", "branch")
+            .order_by("created_at")
+        )
 
 
 class OrderCallWaiterView(APIView):

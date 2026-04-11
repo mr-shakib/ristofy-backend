@@ -22,6 +22,7 @@ from .views import (
     OrderCompleteView,
     OrderCourseFireView,
     OrderDetailView,
+    OrderEventListView,
     OrderFireView,
     OrderHoldView,
     OrderItemAddView,
@@ -47,6 +48,7 @@ urlpatterns = [
     path("orders/<int:pk>/complete", OrderCompleteView.as_view(), name="order-complete"),
     path("orders/<int:pk>/call-waiter", OrderCallWaiterView.as_view(), name="order-call-waiter"),
     path("orders/<int:pk>/request-bill", OrderRequestBillView.as_view(), name="order-request-bill"),
+    path("orders/<int:pk>/events", OrderEventListView.as_view(), name="order-events"),
     # Order items
     path("orders/<int:pk>/items", OrderItemAddView.as_view(), name="order-item-add"),
     path("orders/<int:pk>/items/<int:item_pk>", OrderItemDetailView.as_view(), name="order-item-detail"),

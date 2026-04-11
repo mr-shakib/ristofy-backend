@@ -482,6 +482,22 @@ class Refund(models.Model):
         return f"Refund {self.amount} for receipt #{self.receipt_id}"
 
 
+class BillSplit(models.Model):
+    """Records an equal or custom split of a bill across N parties."""
+
+    bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name="splits")
+    split_count = models.PositiveSmallIntegerField()
+    split_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Split Bill #{self.bill_id} × {self.split_count} = {self.split_amount} each"
+
+
 class FiscalTransaction(models.Model):
     class TransactionType(models.TextChoices):
         ISSUE_RECEIPT = "ISSUE_RECEIPT", "Issue Receipt"

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import DiningTable, FloorPlan, Reservation, WaitlistEntry
+from .models import DiningTable, FloorPlan, Reservation, TableMergeSession, TableSession, WaitlistEntry
 
 
 class FloorPlanSerializer(serializers.ModelSerializer):
@@ -135,3 +135,29 @@ class WaitlistEntrySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"table": "Table must belong to selected branch."})
 
         return attrs
+
+
+class TableSessionSerializer(serializers.ModelSerializer):
+    table_code = serializers.CharField(source="table.code", read_only=True)
+    opened_by_username = serializers.CharField(source="opened_by.username", read_only=True)
+
+    class Meta:
+        model = TableSession
+        fields = [
+            "id", "branch", "table", "table_code",
+            "opened_by", "opened_by_username", "covers",
+            "seat_map_json", "opened_at", "closed_at",
+        ]
+        read_only_fields = fields
+
+
+class TableMergeSessionSerializer(serializers.ModelSerializer):
+    primary_table_code = serializers.CharField(source="primary_table.code", read_only=True)
+
+    class Meta:
+        model = TableMergeSession
+        fields = [
+            "id", "branch", "primary_table", "primary_table_code",
+            "merged_table_ids", "started_at", "ended_at",
+        ]
+        read_only_fields = fields

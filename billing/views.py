@@ -6,13 +6,15 @@ from rest_framework.views import APIView
 from users.audit import log_activity
 from users.permissions import IsOwnerOrManager
 
-from .models import Bill, FiscalTransaction, Receipt
+from .models import Bill, BillSplit, FiscalTransaction, Receipt
 from .serializers import (
     BillApplyCopertoSerializer,
     BillApplyDiscountSerializer,
     BillCreateFromOrderSerializer,
     BillPaySerializer,
     BillSerializer,
+    BillSplitCreateSerializer,
+    BillSplitSerializer,
     FiscalAckSerializer,
     FiscalTransactionSerializer,
     FiscalZReportSyncSerializer,
@@ -380,6 +382,40 @@ class FiscalZReportStatusView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class BillSplitView(_BillActionBaseView):
+    def post(self, request, pk):
+        bill = self.get_bill(request, pk)
+        if bill is None:
+            return Response({"detail": "Bill not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if bill.status == Bill.Status.DRAFT:
+            return Response({"detail": "Bill must be finalized before splitting."}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = BillSplitCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        split_count = serializer.validated_data["split_count"]
+        from decimal import Decimal, ROUND_HALF_UP
+        split_amount = (bill.grand_total / Decimal(split_count)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        split = BillSplit.objects.create(
+            bill=bill,
+            split_count=split_count,
+            split_amount=split_amount,
+            notes=serializer.validated_data.get("notes", ""),
+        )
+
+        log_activity(
+            actor_user=request.user,
+            action="bill_split",
+            entity_type="bill",
+            entity_id=str(bill.id),
+            tenant=request.user.tenant,
+            branch=bill.branch,
+        )
+        return Response(BillSplitSerializer(split).data, status=status.HTTP_201_CREATED)
 
 
 class BridgeFiscalAckView(APIView):

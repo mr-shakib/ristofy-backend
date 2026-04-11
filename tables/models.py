@@ -47,6 +47,55 @@ class DiningTable(models.Model):
         return f"{self.branch.name} - {self.code}"
 
 
+class TableSession(models.Model):
+    """Tracks a live service session at a table (open → closed)."""
+
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="table_sessions")
+    table = models.ForeignKey(DiningTable, on_delete=models.CASCADE, related_name="sessions")
+    opened_by = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="opened_sessions"
+    )
+    covers = models.PositiveSmallIntegerField(default=1)
+    seat_map_json = models.JSONField(default=dict, blank=True)
+    opened_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-opened_at"]
+
+    def __str__(self):
+        return f"Session {self.id} — {self.table.code} ({'open' if not self.closed_at else 'closed'})"
+
+    @property
+    def is_open(self):
+        return self.closed_at is None
+
+
+class TableMergeSession(models.Model):
+    """Tracks a merge of multiple tables into one service session."""
+
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="table_merge_sessions")
+    primary_table = models.ForeignKey(
+        DiningTable, on_delete=models.CASCADE, related_name="merge_sessions_as_primary"
+    )
+    merged_table_ids = models.JSONField(default=list)
+    started_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    started_by = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="started_merges"
+    )
+
+    class Meta:
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"Merge {self.id} — primary table {self.primary_table.code}"
+
+    @property
+    def is_active(self):
+        return self.ended_at is None
+
+
 class Reservation(models.Model):
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"

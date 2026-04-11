@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Allergen, MenuCategory, MenuItem, MenuSchedule
+from .models import AddonGroup, AddonItem, Allergen, MenuCategory, MenuItem, MenuSchedule, MenuVariant
 
 
 class AllergenSerializer(serializers.ModelSerializer):
@@ -145,3 +145,59 @@ class MenuScheduleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"end_time": "End time must be after start time."})
 
         return attrs
+
+
+class MenuVariantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MenuVariant
+        fields = ["id", "menu_item", "name", "price_delta", "is_default", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["id", "menu_item", "created_at", "updated_at"]
+
+    def validate_is_default(self, value):
+        if value and self.instance is None:
+            item = self.context.get("menu_item")
+            if item and item.variants.filter(is_default=True).exists():
+                raise serializers.ValidationError("A default variant already exists for this item.")
+        return value
+
+
+class AddonItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AddonItem
+        fields = ["id", "addon_group", "name", "price_delta", "vat_rate", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["id", "addon_group", "created_at", "updated_at"]
+
+
+class AddonGroupSerializer(serializers.ModelSerializer):
+    items = AddonItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = AddonGroup
+        fields = [
+            "id", "menu_item", "name", "min_select", "max_select",
+            "required", "is_active", "items", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "menu_item", "items", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        min_select = attrs.get("min_select", getattr(self.instance, "min_select", 0))
+        max_select = attrs.get("max_select", getattr(self.instance, "max_select", 1))
+        if max_select < min_select:
+            raise serializers.ValidationError({"max_select": "max_select must be >= min_select."})
+        return attrs
+
+
+class MenuItemPublicSerializer(serializers.ModelSerializer):
+    """Lean read-only serializer for the public customer menu endpoint."""
+
+    category_name = serializers.CharField(source="category.name", read_only=True)
+    allergens = AllergenSerializer(many=True, read_only=True)
+    variants = MenuVariantSerializer(many=True, read_only=True)
+    addon_groups = AddonGroupSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = MenuItem
+        fields = [
+            "id", "name", "description", "base_price", "vat_rate",
+            "category", "category_name", "allergens", "variants", "addon_groups",
+        ]

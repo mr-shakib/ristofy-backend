@@ -355,3 +355,35 @@ class WasteLog(models.Model):
 
     def __str__(self):
         return f"WasteLog #{self.pk} x{self.quantity_wasted} (Branch: {self.branch.name})"
+
+
+class OrderEvent(models.Model):
+    """Immutable audit trail for order lifecycle transitions."""
+
+    class EventType(models.TextChoices):
+        CREATED = "CREATED", "Created"
+        ITEM_ADDED = "ITEM_ADDED", "Item Added"
+        ITEM_REMOVED = "ITEM_REMOVED", "Item Removed"
+        FIRED = "FIRED", "Fired to Kitchen"
+        COURSE_FIRED = "COURSE_FIRED", "Course Fired"
+        HELD = "HELD", "Held"
+        PARTIALLY_SERVED = "PARTIALLY_SERVED", "Partially Served"
+        COMPLETED = "COMPLETED", "Completed"
+        CANCELED = "CANCELED", "Canceled"
+        NOTE_ADDED = "NOTE_ADDED", "Note Added"
+        CHANNEL_CHANGED = "CHANNEL_CHANGED", "Channel Changed"
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="events")
+    branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="order_events")
+    actor_user = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="order_events"
+    )
+    event_type = models.CharField(max_length=30, choices=EventType.choices)
+    metadata_json = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"OrderEvent {self.event_type} — Order #{self.order_id}"

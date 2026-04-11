@@ -1,12 +1,23 @@
 from django.db.models import Q
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from core.pagination import StandardResultsSetPagination
 from users.audit import log_activity
 from users.permissions import IsOwnerOrManager
 
-from .models import Allergen, MenuCategory, MenuItem, MenuSchedule
-from .serializers import AllergenSerializer, MenuCategorySerializer, MenuItemSerializer, MenuScheduleSerializer
+from .models import AddonGroup, AddonItem, Allergen, MenuCategory, MenuItem, MenuSchedule, MenuVariant
+from .serializers import (
+    AddonGroupSerializer,
+    AddonItemSerializer,
+    AllergenSerializer,
+    MenuCategorySerializer,
+    MenuItemPublicSerializer,
+    MenuItemSerializer,
+    MenuScheduleSerializer,
+    MenuVariantSerializer,
+)
 
 
 class AllergenListCreateView(generics.ListCreateAPIView):
@@ -253,3 +264,223 @@ class MenuScheduleDetailView(generics.RetrieveUpdateDestroyAPIView):
             branch=instance.branch,
         )
         instance.delete()
+
+
+# ---------------------------------------------------------------------------
+# Menu Variants
+# ---------------------------------------------------------------------------
+
+class MenuVariantListCreateView(generics.ListCreateAPIView):
+    serializer_class = MenuVariantSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+    pagination_class = StandardResultsSetPagination
+
+    def _get_item(self):
+        return MenuItem.objects.get(pk=self.kwargs["item_pk"], tenant=self.request.user.tenant)
+
+    def get_queryset(self):
+        return MenuVariant.objects.filter(
+            menu_item_id=self.kwargs["item_pk"],
+            menu_item__tenant=self.request.user.tenant,
+        )
+
+    def perform_create(self, serializer):
+        item = self._get_item()
+        variant = serializer.save(menu_item=item)
+        log_activity(
+            actor_user=self.request.user,
+            action="menu_variant_created",
+            entity_type="menu_variant",
+            entity_id=str(variant.id),
+            tenant=self.request.user.tenant,
+            branch=item.branch,
+        )
+
+
+class MenuVariantDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = MenuVariantSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def get_queryset(self):
+        return MenuVariant.objects.filter(menu_item__tenant=self.request.user.tenant)
+
+    def perform_update(self, serializer):
+        variant = serializer.save()
+        log_activity(
+            actor_user=self.request.user,
+            action="menu_variant_updated",
+            entity_type="menu_variant",
+            entity_id=str(variant.id),
+            tenant=self.request.user.tenant,
+        )
+
+    def perform_destroy(self, instance):
+        log_activity(
+            actor_user=self.request.user,
+            action="menu_variant_deleted",
+            entity_type="menu_variant",
+            entity_id=str(instance.id),
+            tenant=self.request.user.tenant,
+        )
+        instance.delete()
+
+
+# ---------------------------------------------------------------------------
+# Addon Groups
+# ---------------------------------------------------------------------------
+
+class AddonGroupListCreateView(generics.ListCreateAPIView):
+    serializer_class = AddonGroupSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+    pagination_class = StandardResultsSetPagination
+
+    def _get_item(self):
+        return MenuItem.objects.get(pk=self.kwargs["item_pk"], tenant=self.request.user.tenant)
+
+    def get_queryset(self):
+        return AddonGroup.objects.filter(
+            menu_item_id=self.kwargs["item_pk"],
+            menu_item__tenant=self.request.user.tenant,
+        ).prefetch_related("items")
+
+    def perform_create(self, serializer):
+        item = self._get_item()
+        group = serializer.save(menu_item=item)
+        log_activity(
+            actor_user=self.request.user,
+            action="addon_group_created",
+            entity_type="addon_group",
+            entity_id=str(group.id),
+            tenant=self.request.user.tenant,
+            branch=item.branch,
+        )
+
+
+class AddonGroupDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = AddonGroupSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def get_queryset(self):
+        return AddonGroup.objects.filter(
+            menu_item__tenant=self.request.user.tenant
+        ).prefetch_related("items")
+
+    def perform_update(self, serializer):
+        group = serializer.save()
+        log_activity(
+            actor_user=self.request.user,
+            action="addon_group_updated",
+            entity_type="addon_group",
+            entity_id=str(group.id),
+            tenant=self.request.user.tenant,
+        )
+
+    def perform_destroy(self, instance):
+        log_activity(
+            actor_user=self.request.user,
+            action="addon_group_deleted",
+            entity_type="addon_group",
+            entity_id=str(instance.id),
+            tenant=self.request.user.tenant,
+        )
+        instance.delete()
+
+
+# ---------------------------------------------------------------------------
+# Addon Items
+# ---------------------------------------------------------------------------
+
+class AddonItemListCreateView(generics.ListCreateAPIView):
+    serializer_class = AddonItemSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+    pagination_class = StandardResultsSetPagination
+
+    def _get_group(self):
+        return AddonGroup.objects.get(
+            pk=self.kwargs["group_pk"],
+            menu_item__tenant=self.request.user.tenant,
+        )
+
+    def get_queryset(self):
+        return AddonItem.objects.filter(
+            addon_group_id=self.kwargs["group_pk"],
+            addon_group__menu_item__tenant=self.request.user.tenant,
+        )
+
+    def perform_create(self, serializer):
+        group = self._get_group()
+        item = serializer.save(addon_group=group)
+        log_activity(
+            actor_user=self.request.user,
+            action="addon_item_created",
+            entity_type="addon_item",
+            entity_id=str(item.id),
+            tenant=self.request.user.tenant,
+        )
+
+
+class AddonItemDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = AddonItemSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def get_queryset(self):
+        return AddonItem.objects.filter(addon_group__menu_item__tenant=self.request.user.tenant)
+
+    def perform_update(self, serializer):
+        item = serializer.save()
+        log_activity(
+            actor_user=self.request.user,
+            action="addon_item_updated",
+            entity_type="addon_item",
+            entity_id=str(item.id),
+            tenant=self.request.user.tenant,
+        )
+
+    def perform_destroy(self, instance):
+        log_activity(
+            actor_user=self.request.user,
+            action="addon_item_deleted",
+            entity_type="addon_item",
+            entity_id=str(instance.id),
+            tenant=self.request.user.tenant,
+        )
+        instance.delete()
+
+
+# ---------------------------------------------------------------------------
+# Public customer menu (no auth required — for QR / kiosk)
+# ---------------------------------------------------------------------------
+
+class CustomerMenuView(APIView):
+    """
+    Returns all active menu items for a branch, grouped by category.
+    Public endpoint — no authentication required.
+    Requires ?branch=<id> query param.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        branch_id = request.query_params.get("branch")
+        if not branch_id:
+            return Response({"detail": "branch query parameter is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        categories = MenuCategory.objects.filter(
+            branch_id=branch_id, is_active=True
+        ).order_by("sort_order", "name")
+
+        result = []
+        for cat in categories:
+            items = (
+                MenuItem.objects.filter(category=cat, is_active=True)
+                .prefetch_related("allergens", "variants", "addon_groups__items")
+                .order_by("name")
+            )
+            result.append({
+                "category_id": cat.id,
+                "category_name": cat.name,
+                "items": MenuItemPublicSerializer(items, many=True).data,
+            })
+
+        return Response(result, status=status.HTTP_200_OK)

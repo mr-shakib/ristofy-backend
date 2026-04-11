@@ -79,6 +79,64 @@ class MenuItemAllergen(models.Model):
         return f"{self.menu_item.name} - {self.allergen.code}"
 
 
+class MenuVariant(models.Model):
+    """Size / option variant for a menu item (e.g. small, medium, large)."""
+
+    menu_item = models.ForeignKey(MenuItem, on_delete=models.CASCADE, related_name="variants")
+    name = models.CharField(max_length=120)
+    price_delta = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("menu_item", "name")
+        ordering = ["menu_item_id", "name"]
+
+    def __str__(self):
+        return f"{self.menu_item.name} — {self.name}"
+
+
+class AddonGroup(models.Model):
+    """Group of optional add-ons for a menu item (e.g. Toppings, Sauces)."""
+
+    menu_item = models.ForeignKey(MenuItem, on_delete=models.CASCADE, related_name="addon_groups")
+    name = models.CharField(max_length=120)
+    min_select = models.PositiveSmallIntegerField(default=0)
+    max_select = models.PositiveSmallIntegerField(default=1)
+    required = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("menu_item", "name")
+        ordering = ["menu_item_id", "name"]
+
+    def __str__(self):
+        return f"{self.menu_item.name} — {self.name}"
+
+
+class AddonItem(models.Model):
+    """A single selectable option within an AddonGroup."""
+
+    addon_group = models.ForeignKey(AddonGroup, on_delete=models.CASCADE, related_name="items")
+    name = models.CharField(max_length=120)
+    price_delta = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("addon_group", "name")
+        ordering = ["addon_group_id", "name"]
+
+    def __str__(self):
+        return f"{self.addon_group.name} — {self.name}"
+
+
 class MenuSchedule(models.Model):
     class Weekday(models.IntegerChoices):
         MONDAY = 1, "Monday"

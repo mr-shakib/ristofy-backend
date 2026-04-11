@@ -3,7 +3,7 @@ from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Branch, Tenant
+from .models import Branch, FeatureFlag, SubscriptionPlan, Tenant, TenantSubscription
 
 User = get_user_model()
 
@@ -11,14 +11,51 @@ User = get_user_model()
 class TenantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tenant
-        fields = ["id", "name", "created_at", "updated_at"]
-        read_only_fields = fields
+        fields = [
+            "id", "name", "email", "phone", "address",
+            "vat_number", "fiscal_code", "logo_url",
+            "timezone", "currency", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class BranchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
-        fields = ["id", "tenant", "name", "created_at", "updated_at"]
+        fields = ["id", "tenant", "name", "address", "phone", "email", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["id", "tenant", "created_at", "updated_at"]
+
+
+class SubscriptionPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SubscriptionPlan
+        fields = [
+            "id", "name", "tier", "max_branches", "max_users",
+            "monthly_price", "annual_price", "features_json",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class TenantSubscriptionSerializer(serializers.ModelSerializer):
+    plan_name = serializers.CharField(source="plan.name", read_only=True)
+    plan_tier = serializers.CharField(source="plan.tier", read_only=True)
+
+    class Meta:
+        model = TenantSubscription
+        fields = [
+            "id", "tenant", "plan", "plan_name", "plan_tier",
+            "status", "trial_ends_at", "current_period_start",
+            "current_period_end", "external_subscription_id",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "tenant", "created_at", "updated_at"]
+
+
+class FeatureFlagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeatureFlag
+        fields = ["id", "tenant", "key", "enabled", "value_json", "created_at", "updated_at"]
         read_only_fields = ["id", "tenant", "created_at", "updated_at"]
 
 

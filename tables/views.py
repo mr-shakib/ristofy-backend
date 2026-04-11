@@ -7,8 +7,15 @@ from core.pagination import StandardResultsSetPagination
 from users.audit import log_activity
 from users.permissions import IsOwnerOrManager
 
-from .models import DiningTable, FloorPlan, Reservation, WaitlistEntry
-from .serializers import DiningTableSerializer, FloorPlanSerializer, ReservationSerializer, WaitlistEntrySerializer
+from .models import DiningTable, FloorPlan, Reservation, TableMergeSession, TableSession, WaitlistEntry
+from .serializers import (
+    DiningTableSerializer,
+    FloorPlanSerializer,
+    ReservationSerializer,
+    TableMergeSessionSerializer,
+    TableSessionSerializer,
+    WaitlistEntrySerializer,
+)
 from .services import sync_table_state_for_reservation, sync_table_state_for_table, sync_table_state_for_waitlist
 
 
@@ -471,3 +478,220 @@ class WaitlistEntryCancelView(APIView):
             branch=waitlist_entry.branch,
         )
         return Response(WaitlistEntrySerializer(waitlist_entry, context={"request": request}).data, status=status.HTTP_200_OK)
+
+
+class TableOpenSessionView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def post(self, request, pk):
+        try:
+            table = DiningTable.objects.select_related("branch").get(pk=pk, branch__tenant=request.user.tenant)
+        except DiningTable.DoesNotExist:
+            return Response({"detail": "Table not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if table.state == DiningTable.State.OCCUPIED:
+            return Response({"detail": "Table already has an open session."}, status=status.HTTP_400_BAD_REQUEST)
+
+        covers = request.data.get("covers", 1)
+        seat_map_json = request.data.get("seat_map_json", {})
+
+        session = TableSession.objects.create(
+            branch=table.branch,
+            table=table,
+            opened_by=request.user,
+            covers=covers,
+            seat_map_json=seat_map_json,
+        )
+        table.state = DiningTable.State.OCCUPIED
+        table.save(update_fields=["state", "updated_at"])
+
+        log_activity(
+            actor_user=request.user,
+            action="table_session_opened",
+            entity_type="table_session",
+            entity_id=str(session.id),
+            tenant=request.user.tenant,
+            branch=table.branch,
+        )
+        return Response(TableSessionSerializer(session).data, status=status.HTTP_201_CREATED)
+
+
+class TableCloseSessionView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def post(self, request, pk):
+        try:
+            table = DiningTable.objects.select_related("branch").get(pk=pk, branch__tenant=request.user.tenant)
+        except DiningTable.DoesNotExist:
+            return Response({"detail": "Table not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        session = TableSession.objects.filter(table=table, closed_at__isnull=True).first()
+        if not session:
+            return Response({"detail": "No open session for this table."}, status=status.HTTP_400_BAD_REQUEST)
+
+        session.closed_at = timezone.now()
+        session.save(update_fields=["closed_at"])
+
+        table.state = DiningTable.State.FREE
+        table.save(update_fields=["state", "updated_at"])
+
+        log_activity(
+            actor_user=request.user,
+            action="table_session_closed",
+            entity_type="table_session",
+            entity_id=str(session.id),
+            tenant=request.user.tenant,
+            branch=table.branch,
+        )
+        return Response(TableSessionSerializer(session).data, status=status.HTTP_200_OK)
+
+
+class TableMergeView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def post(self, request):
+        primary_table_id = request.data.get("primary_table")
+        merged_table_ids = request.data.get("merged_table_ids", [])
+
+        if not primary_table_id:
+            return Response({"detail": "primary_table is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not merged_table_ids:
+            return Response({"detail": "merged_table_ids must not be empty."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            primary_table = DiningTable.objects.select_related("branch").get(
+                pk=primary_table_id, branch__tenant=request.user.tenant
+            )
+        except DiningTable.DoesNotExist:
+            return Response({"detail": "Primary table not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if str(primary_table_id) in [str(i) for i in merged_table_ids]:
+            return Response({"detail": "primary_table cannot be in merged_table_ids."}, status=status.HTTP_400_BAD_REQUEST)
+
+        valid_count = DiningTable.objects.filter(
+            id__in=merged_table_ids, branch=primary_table.branch
+        ).count()
+        if valid_count != len(merged_table_ids):
+            return Response({"detail": "One or more merged tables not found in this branch."}, status=status.HTTP_400_BAD_REQUEST)
+
+        merge_session = TableMergeSession.objects.create(
+            branch=primary_table.branch,
+            primary_table=primary_table,
+            merged_table_ids=merged_table_ids,
+            started_by=request.user,
+        )
+        log_activity(
+            actor_user=request.user,
+            action="table_merge_started",
+            entity_type="table_merge_session",
+            entity_id=str(merge_session.id),
+            tenant=request.user.tenant,
+            branch=primary_table.branch,
+        )
+        return Response(TableMergeSessionSerializer(merge_session).data, status=status.HTTP_201_CREATED)
+
+
+class TableSplitView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def post(self, request, pk):
+        try:
+            merge_session = TableMergeSession.objects.select_related("branch", "primary_table").get(
+                pk=pk, branch__tenant=request.user.tenant
+            )
+        except TableMergeSession.DoesNotExist:
+            return Response({"detail": "Merge session not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if merge_session.ended_at is not None:
+            return Response({"detail": "Merge session is already ended."}, status=status.HTTP_400_BAD_REQUEST)
+
+        merge_session.ended_at = timezone.now()
+        merge_session.save(update_fields=["ended_at"])
+
+        log_activity(
+            actor_user=request.user,
+            action="table_merge_ended",
+            entity_type="table_merge_session",
+            entity_id=str(merge_session.id),
+            tenant=request.user.tenant,
+            branch=merge_session.branch,
+        )
+        return Response(TableMergeSessionSerializer(merge_session).data, status=status.HTTP_200_OK)
+
+
+class TableSessionListView(generics.ListAPIView):
+    serializer_class = TableSessionSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        queryset = (
+            TableSession.objects.filter(branch__tenant=self.request.user.tenant)
+            .select_related("branch", "table", "opened_by")
+            .order_by("-opened_at")
+        )
+        params = self.request.query_params
+        branch = params.get("branch")
+        if branch:
+            queryset = queryset.filter(branch_id=branch)
+        table = params.get("table")
+        if table:
+            queryset = queryset.filter(table_id=table)
+        is_open = params.get("is_open")
+        if is_open is not None:
+            if is_open.lower() in {"1", "true", "yes"}:
+                queryset = queryset.filter(closed_at__isnull=True)
+            else:
+                queryset = queryset.filter(closed_at__isnull=False)
+        return queryset
+
+
+class TableLiveStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+    def get(self, request):
+        params = request.query_params
+        queryset = (
+            DiningTable.objects.filter(branch__tenant=request.user.tenant)
+            .select_related("branch", "floor_plan")
+            .order_by("id")
+        )
+        branch = params.get("branch")
+        if branch:
+            queryset = queryset.filter(branch_id=branch)
+
+        floor_plan = params.get("floor_plan")
+        if floor_plan:
+            queryset = queryset.filter(floor_plan_id=floor_plan)
+
+        open_sessions = {
+            s.table_id: s
+            for s in TableSession.objects.filter(
+                table__in=queryset, closed_at__isnull=True
+            ).select_related("opened_by")
+        }
+        active_merges = {
+            m.primary_table_id: m
+            for m in TableMergeSession.objects.filter(
+                primary_table__in=queryset, ended_at__isnull=True
+            )
+        }
+
+        result = []
+        for table in queryset:
+            session = open_sessions.get(table.id)
+            merge = active_merges.get(table.id)
+            entry = {
+                "id": table.id,
+                "code": table.code,
+                "seats": table.seats,
+                "state": table.state,
+                "floor_plan": table.floor_plan_id,
+                "x": table.x,
+                "y": table.y,
+                "open_session": TableSessionSerializer(session).data if session else None,
+                "active_merge": TableMergeSessionSerializer(merge).data if merge else None,
+            }
+            result.append(entry)
+
+        return Response(result, status=status.HTTP_200_OK)

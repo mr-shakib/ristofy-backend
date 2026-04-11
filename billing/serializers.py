@@ -178,3 +178,21 @@ class FiscalAckSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=FiscalTransaction.Status.choices)
     response_json = serializers.JSONField(required=False)
     error_code = serializers.CharField(required=False, allow_blank=True, max_length=64)
+
+
+class BillSplitSerializer(serializers.ModelSerializer):
+    split_amount = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import BillSplit
+        model = BillSplit
+        fields = ["id", "bill", "split_count", "split_amount", "notes", "created_at"]
+        read_only_fields = fields
+
+    def get_split_amount(self, obj):
+        return str(obj.split_amount)
+
+
+class BillSplitCreateSerializer(serializers.Serializer):
+    split_count = serializers.IntegerField(min_value=2, max_value=20)
+    notes = serializers.CharField(required=False, allow_blank=True)

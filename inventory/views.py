@@ -10,14 +10,17 @@ from core.pagination import StandardResultsSetPagination
 from users.audit import log_activity
 from users.permissions import IsOwnerOrManager
 
-from .models import Ingredient, RecipeComponent, StockMovement
+from .models import Ingredient, PurchaseOrder, PurchaseOrderItem, RecipeComponent, StockMovement, Supplier
 from .serializers import (
 	IngredientSerializer,
 	InventoryUsageQuerySerializer,
 	LowStockIngredientSerializer,
+	PurchaseOrderReceiveSerializer,
+	PurchaseOrderSerializer,
 	ReceiveStockSerializer,
 	RecipeComponentSerializer,
 	StockMovementSerializer,
+	SupplierSerializer,
 )
 
 
@@ -330,3 +333,208 @@ class InventoryUsageReportView(APIView):
 				],
 			}
 		)
+
+
+class SupplierListCreateView(generics.ListCreateAPIView):
+	serializer_class = SupplierSerializer
+	permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+	pagination_class = StandardResultsSetPagination
+
+	def get_queryset(self):
+		queryset = Supplier.objects.filter(tenant=self.request.user.tenant).select_related("branch").order_by("name")
+		params = self.request.query_params
+		branch = params.get("branch")
+		if branch:
+			queryset = queryset.filter(branch_id=branch)
+		q = params.get("q")
+		if q:
+			queryset = queryset.filter(name__icontains=q)
+		is_active = params.get("is_active")
+		if is_active is not None:
+			queryset = queryset.filter(is_active=is_active.lower() in {"1", "true", "yes"})
+		return queryset
+
+	def perform_create(self, serializer):
+		supplier = serializer.save(tenant=self.request.user.tenant)
+		log_activity(
+			actor_user=self.request.user,
+			action="supplier_created",
+			entity_type="supplier",
+			entity_id=str(supplier.id),
+			tenant=self.request.user.tenant,
+			branch=supplier.branch,
+		)
+
+
+class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
+	serializer_class = SupplierSerializer
+	permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+	def get_queryset(self):
+		return Supplier.objects.filter(tenant=self.request.user.tenant).select_related("branch")
+
+	def perform_update(self, serializer):
+		supplier = serializer.save()
+		log_activity(
+			actor_user=self.request.user,
+			action="supplier_updated",
+			entity_type="supplier",
+			entity_id=str(supplier.id),
+			tenant=self.request.user.tenant,
+			branch=supplier.branch,
+		)
+
+	def perform_destroy(self, instance):
+		log_activity(
+			actor_user=self.request.user,
+			action="supplier_deleted",
+			entity_type="supplier",
+			entity_id=str(instance.id),
+			tenant=self.request.user.tenant,
+			branch=instance.branch,
+		)
+		instance.delete()
+
+
+class PurchaseOrderListCreateView(generics.ListCreateAPIView):
+	serializer_class = PurchaseOrderSerializer
+	permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+	pagination_class = StandardResultsSetPagination
+
+	def get_queryset(self):
+		queryset = (
+			PurchaseOrder.objects.filter(tenant=self.request.user.tenant)
+			.select_related("branch", "supplier", "created_by")
+			.prefetch_related("items__ingredient")
+			.order_by("-created_at")
+		)
+		params = self.request.query_params
+		branch = params.get("branch")
+		if branch:
+			queryset = queryset.filter(branch_id=branch)
+		supplier = params.get("supplier")
+		if supplier:
+			queryset = queryset.filter(supplier_id=supplier)
+		po_status = params.get("status")
+		if po_status:
+			queryset = queryset.filter(status=po_status)
+		return queryset
+
+	def perform_create(self, serializer):
+		po = serializer.save(tenant=self.request.user.tenant, created_by=self.request.user)
+		log_activity(
+			actor_user=self.request.user,
+			action="purchase_order_created",
+			entity_type="purchase_order",
+			entity_id=str(po.id),
+			tenant=self.request.user.tenant,
+			branch=po.branch,
+		)
+
+
+class PurchaseOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
+	serializer_class = PurchaseOrderSerializer
+	permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+	def get_queryset(self):
+		return (
+			PurchaseOrder.objects.filter(tenant=self.request.user.tenant)
+			.select_related("branch", "supplier", "created_by")
+			.prefetch_related("items__ingredient")
+		)
+
+	def perform_update(self, serializer):
+		po = serializer.save()
+		log_activity(
+			actor_user=self.request.user,
+			action="purchase_order_updated",
+			entity_type="purchase_order",
+			entity_id=str(po.id),
+			tenant=self.request.user.tenant,
+			branch=po.branch,
+		)
+
+	def perform_destroy(self, instance):
+		if instance.status not in {PurchaseOrder.Status.DRAFT, PurchaseOrder.Status.CANCELED}:
+			from rest_framework.exceptions import ValidationError
+			raise ValidationError("Only draft or canceled purchase orders can be deleted.")
+		log_activity(
+			actor_user=self.request.user,
+			action="purchase_order_deleted",
+			entity_type="purchase_order",
+			entity_id=str(instance.id),
+			tenant=self.request.user.tenant,
+			branch=instance.branch,
+		)
+		instance.delete()
+
+
+class PurchaseOrderReceiveView(APIView):
+	permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+
+	def post(self, request, pk):
+		try:
+			po = (
+				PurchaseOrder.objects.select_related("branch", "tenant")
+				.prefetch_related("items__ingredient")
+				.get(pk=pk, tenant=request.user.tenant)
+			)
+		except PurchaseOrder.DoesNotExist:
+			return Response({"detail": "Purchase order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+		if po.status == PurchaseOrder.Status.CANCELED:
+			return Response({"detail": "Canceled purchase orders cannot be received."}, status=status.HTTP_400_BAD_REQUEST)
+		if po.status == PurchaseOrder.Status.RECEIVED:
+			return Response({"detail": "Purchase order is already fully received."}, status=status.HTTP_400_BAD_REQUEST)
+
+		serializer = PurchaseOrderReceiveSerializer(data=request.data)
+		serializer.is_valid(raise_exception=True)
+
+		item_map = {item.id: item for item in po.items.all()}
+		errors = []
+		movements = []
+
+		for entry in serializer.validated_data["items"]:
+			item_id = entry["id"]
+			qty_received = Decimal(str(entry["quantity_received"]))
+			item = item_map.get(item_id)
+			if not item:
+				errors.append(f"Item {item_id} not found in this purchase order.")
+				continue
+			try:
+				movement = StockMovement.record_movement(
+					ingredient=item.ingredient,
+					movement_type=StockMovement.MovementType.RECEIVING,
+					quantity=qty_received,
+					created_by=request.user,
+					reason=f"PO #{po.po_number or po.id} receiving",
+					reference=str(po.id),
+				)
+				item.quantity_received = F("quantity_received") + qty_received
+				item.save(update_fields=["quantity_received", "updated_at"])
+				movements.append(movement.id)
+			except ValueError as exc:
+				errors.append(str(exc))
+
+		if errors:
+			return Response({"detail": errors}, status=status.HTTP_400_BAD_REQUEST)
+
+		po.refresh_from_db()
+		all_received = all(
+			item.quantity_received >= item.quantity_ordered
+			for item in po.items.all()
+		)
+		po.status = PurchaseOrder.Status.RECEIVED if all_received else PurchaseOrder.Status.PARTIALLY_RECEIVED
+		po.save(update_fields=["status", "updated_at"])
+
+		log_activity(
+			actor_user=request.user,
+			action="purchase_order_received",
+			entity_type="purchase_order",
+			entity_id=str(po.id),
+			tenant=request.user.tenant,
+			branch=po.branch,
+		)
+
+		po.refresh_from_db()
+		return Response(PurchaseOrderSerializer(po, context={"request": request}).data, status=status.HTTP_200_OK)

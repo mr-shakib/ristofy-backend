@@ -131,3 +131,68 @@ class StockMovement(models.Model):
 			ingredient_locked.save(update_fields=["current_stock", "updated_at"])
 
 			return movement
+
+
+class Supplier(models.Model):
+	tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="suppliers")
+	branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="suppliers")
+	name = models.CharField(max_length=160)
+	contact_name = models.CharField(max_length=120, blank=True)
+	phone = models.CharField(max_length=40, blank=True)
+	email = models.EmailField(blank=True)
+	address = models.TextField(blank=True)
+	notes = models.TextField(blank=True)
+	is_active = models.BooleanField(default=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ["name"]
+		unique_together = ("tenant", "branch", "name")
+
+	def __str__(self):
+		return f"{self.name} ({self.branch.name})"
+
+
+class PurchaseOrder(models.Model):
+	class Status(models.TextChoices):
+		DRAFT = "DRAFT", "Draft"
+		SENT = "SENT", "Sent"
+		PARTIALLY_RECEIVED = "PARTIALLY_RECEIVED", "Partially Received"
+		RECEIVED = "RECEIVED", "Received"
+		CANCELED = "CANCELED", "Canceled"
+
+	tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="purchase_orders")
+	branch = models.ForeignKey("tenants.Branch", on_delete=models.CASCADE, related_name="purchase_orders")
+	supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name="purchase_orders")
+	po_number = models.CharField(max_length=60, blank=True)
+	status = models.CharField(max_length=25, choices=Status.choices, default=Status.DRAFT)
+	expected_at = models.DateField(null=True, blank=True)
+	notes = models.TextField(blank=True)
+	created_by = models.ForeignKey(
+		"users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="purchase_orders"
+	)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ["-created_at"]
+
+	def __str__(self):
+		return f"PO #{self.po_number or self.id} [{self.status}] — {self.branch.name}"
+
+
+class PurchaseOrderItem(models.Model):
+	purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="items")
+	ingredient = models.ForeignKey(Ingredient, on_delete=models.CASCADE, related_name="purchase_order_items")
+	quantity_ordered = models.DecimalField(max_digits=12, decimal_places=3)
+	quantity_received = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+	unit_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ["id"]
+
+	def __str__(self):
+		return f"{self.ingredient.name} x{self.quantity_ordered} (PO #{self.purchase_order_id})"
