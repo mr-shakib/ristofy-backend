@@ -86,13 +86,28 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Loyalty eligibility evaluates active visit-count and spend-total rules.
 	- Role boundaries validated: waiter/cashier allowed, kitchen forbidden.
 	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (146 tests) using Python 3.14 with PostgreSQL.
+- Phase 9: Completed
+	- DailyReportSnapshot model implemented with tenant+branch+business_date uniqueness and KPI fields.
+	- Reporting API implemented:
+		- GET `/api/v1/reports/snapshots`
+		- POST `/api/v1/reports/snapshots/refresh`
+		- GET `/api/v1/reports/sales/by-category`
+		- GET `/api/v1/reports/sales/by-table`
+		- GET `/api/v1/reports/sales/by-waiter`
+		- GET `/api/v1/reports/sales/by-vat`
+		- GET `/api/v1/reports/buffet/branch-comparison`
+		- POST `/api/v1/reports/cache/invalidate`
+	- Tenant-scoped report cache and refresh invalidation strategy implemented.
+	- Report app wired into API routing and admin.
+	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (151 tests) using Python 3.14 with PostgreSQL.
 
 ## 1.2 Status Audit Snapshot (2026-04-11)
 
-- Code and docs are aligned for completed scope through Phase 8.
+- Code and docs are aligned for completed scope through Phase 9.
 - Billing Step A-D and fiscal integration flows are implemented in code (models, migrations, endpoints, tests).
 - Inventory Phase 7 full scope is implemented in code (models, migrations, endpoints, tests, and order-flow integration).
 - Takeaway and loyalty Phase 8 scope is implemented in code (models, migrations, endpoints, tests).
+- Reporting Phase 9 scope is implemented in code (snapshot model, endpoints, caching strategy, tests).
 - Default `.venv` in this workspace is Python 3.11 (not compatible with Django 6.0.4); local validation was executed via Python 3.14 virtualenv.
 
 ## 2. Target Tech Stack
@@ -908,13 +923,14 @@ All endpoints are under /api/v1 and require tenant-scoped auth unless explicitly
 - POST /api/v1/inventory/receivings
 - GET /api/v1/inventory/reports/low-stock
 - GET /api/v1/inventory/reports/usage
-- GET /api/v1/reports/daily-sales
-- GET /api/v1/reports/sales-by-category
-- GET /api/v1/reports/sales-by-table
-- GET /api/v1/reports/sales-by-waiter
-- GET /api/v1/reports/vat
-- GET /api/v1/reports/buffet
-- GET /api/v1/reports/branch-comparison
+- GET /api/v1/reports/snapshots
+- POST /api/v1/reports/snapshots/refresh
+- GET /api/v1/reports/sales/by-category
+- GET /api/v1/reports/sales/by-table
+- GET /api/v1/reports/sales/by-waiter
+- GET /api/v1/reports/sales/by-vat
+- GET /api/v1/reports/buffet/branch-comparison
+- POST /api/v1/reports/cache/invalidate
 
 ### 6.11 Takeaway, loyalty, sync
 - POST /api/v1/takeaway/orders
@@ -1072,10 +1088,10 @@ All endpoints are under /api/v1 and require tenant-scoped auth unless explicitly
 - Completed: customer profile lookup, visit history capture, and loyalty eligibility endpoint
 
 ### Phase 9 (Week 13): Reporting
-- Daily report snapshots
-- Sales views by category, table, waiter, and VAT
-- Buffet analytics and branch comparison
-- Caching and refresh strategy
+- Completed: daily report snapshots
+- Completed: sales views by category, table, waiter, and VAT
+- Completed: buffet branch comparison analytics
+- Completed: tenant-scoped report caching and refresh strategy
 
 ### Phase 10 (Week 14): Offline sync protocol
 - Device registration and heartbeat

@@ -2232,6 +2232,91 @@ Common Phase 8 errors:
 - 400 when branch/order/customer is outside tenant scope.
 - 403 when caller role is `KITCHEN`.
 
+## 3.35 Reporting (Phase 9 - Implemented)
+
+All reporting endpoints require OWNER or MANAGER role.
+
+### Refresh Daily Snapshots
+
+- Method: POST
+- URL: {{base_url}}/reports/snapshots/refresh
+- Auth: Yes (OWNER/MANAGER)
+
+Request body (single branch):
+
+```json
+{
+  "branch": 20,
+  "business_date": "2026-04-11"
+}
+```
+
+Request body (all branches in tenant):
+
+```json
+{
+  "business_date": "2026-04-11"
+}
+```
+
+Behavior:
+
+- Recomputes KPI snapshots for the target date.
+- Invalidates tenant report cache keys after refresh.
+
+### List Daily Snapshots
+
+- Method: GET
+- URL: {{base_url}}/reports/snapshots?branch={{branch_id}}&date_from=2026-04-01&date_to=2026-04-30
+- Auth: Yes (OWNER/MANAGER)
+
+Response is paginated with KPI fields per branch/day.
+
+### Sales By Category
+
+- Method: GET
+- URL: {{base_url}}/reports/sales/by-category?branch={{branch_id}}&date_from=2026-04-01&date_to=2026-04-30
+- Auth: Yes (OWNER/MANAGER)
+
+### Sales By Table
+
+- Method: GET
+- URL: {{base_url}}/reports/sales/by-table?branch={{branch_id}}
+- Auth: Yes (OWNER/MANAGER)
+
+### Sales By Waiter
+
+- Method: GET
+- URL: {{base_url}}/reports/sales/by-waiter?branch={{branch_id}}
+- Auth: Yes (OWNER/MANAGER)
+
+### Sales By VAT
+
+- Method: GET
+- URL: {{base_url}}/reports/sales/by-vat?branch={{branch_id}}
+- Auth: Yes (OWNER/MANAGER)
+
+### Buffet Branch Comparison
+
+- Method: GET
+- URL: {{base_url}}/reports/buffet/branch-comparison?date_from=2026-04-01&date_to=2026-04-30
+- Auth: Yes (OWNER/MANAGER)
+
+### Invalidate Report Cache
+
+- Method: POST
+- URL: {{base_url}}/reports/cache/invalidate
+- Auth: Yes (OWNER/MANAGER)
+
+Behavior:
+
+- Clears all tenant-scoped cached report payloads.
+
+Common Phase 9 errors:
+
+- 403 when caller is not OWNER/MANAGER.
+- 400 when `date_to < date_from`.
+
 ## 5. Common Troubleshooting
 
 - 401 Unauthorized:

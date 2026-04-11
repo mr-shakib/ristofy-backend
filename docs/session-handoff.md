@@ -77,6 +77,21 @@ See docs/backend-roadmap.md for full detail. Summary:
 - **Role boundary enforcement** validated for waiter/cashier access and kitchen denial.
 - **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test orders`, and full `manage.py test` passed (146 tests total) using Python 3.14 with PostgreSQL.
 
+### Phase 9 (Completed)
+- **DailyReportSnapshot model** implemented with tenant+branch+business_date uniqueness and KPI metrics.
+- **Reporting API implemented**:
+	- GET `/api/v1/reports/snapshots`
+	- POST `/api/v1/reports/snapshots/refresh`
+	- GET `/api/v1/reports/sales/by-category`
+	- GET `/api/v1/reports/sales/by-table`
+	- GET `/api/v1/reports/sales/by-waiter`
+	- GET `/api/v1/reports/sales/by-vat`
+	- GET `/api/v1/reports/buffet/branch-comparison`
+	- POST `/api/v1/reports/cache/invalidate`
+- **Caching strategy implemented** with tenant-scoped cache keys and explicit invalidation/refresh path.
+- **Role boundary enforcement** validated (OWNER/MANAGER allowed, WAITER denied).
+- **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test reports`, and full `manage.py test` passed (151 tests total) using Python 3.14 with PostgreSQL.
+
 ## 2) New Migrations
 
 - orders/migrations/0005_buffetplan_buffetsession_wastelog_buffetround.py
@@ -86,6 +101,7 @@ See docs/backend-roadmap.md for full detail. Summary:
 - inventory/migrations/0001_initial.py
 - inventory/migrations/0002_alter_stockmovement_movement_type_recipecomponent.py
 - orders/migrations/0006_customer_order_customer_customervisit_loyaltyrule_and_more.py
+- reports/migrations/0001_initial.py
 
 ## 3) Phase 4 API Surface
 
@@ -109,16 +125,15 @@ For payloads, see docs/api-postman-guide.md §3.27–3.30.
 - Fiscal integration currently uses simulated completion flow (no real device/bridge transport yet).
 - Default project `.venv` is Python 3.11 (incompatible with pinned Django 6.0.4); local validation was executed using a Python 3.14 virtualenv.
 
-## 5) Where To Start Next (Phase 9)
+## 5) Where To Start Next (Phase 10)
 
-### Phase 8: Completed
-- Takeaway and loyalty scope delivered in production-grade shape.
+### Phase 9: Completed
+- Reporting scope delivered in production-grade shape.
 
-### Next Priority (Phase 9 — Reporting)
-- Daily report snapshots
-- Sales views by category/table/waiter/VAT
-- Buffet and branch comparison reports
-- Report cache + refresh strategy
+### Next Priority (Phase 10 — Offline sync protocol)
+- Device registration and heartbeat
+- Push and pull delta sync endpoints
+- Conflict resolution and replay safety
 
 ## 6) Next Session Quick Commands
 
@@ -138,7 +153,7 @@ Note: the default `.venv` is Python 3.11 and incompatible with pinned Django 6.0
 
 ## 7) Copy-Paste Prompt For Next Session
 
-"Continue from docs/session-handoff.md. Phase 8 takeaway and loyalty is complete with production-grade endpoints and tests. Start Phase 9 reporting (daily snapshots, sales dimensions, VAT, buffet/branch views, caching) with strict tenant isolation, tests, and docs updates."
+"Continue from docs/session-handoff.md. Phase 9 reporting is complete with production-grade endpoints and tests. Start Phase 10 offline sync protocol (device registration, heartbeat, push/pull deltas, conflict policy) with strict tenant isolation, tests, and docs updates."
 
 ## 8) Definition Of Done For Phase 5
 
@@ -157,6 +172,8 @@ Note: the default `.venv` is Python 3.11 and incompatible with pinned Django 6.0
 - Verified migrations added: inventory/migrations/0001_initial.py and inventory/migrations/0002_alter_stockmovement_movement_type_recipecomponent.py.
 - Verified in code: Phase 8 endpoints implemented (takeaway create/detail/ready, loyalty customer lookup, loyalty visits, loyalty eligibility).
 - Verified migration added: orders/migrations/0006_customer_order_customer_customervisit_loyaltyrule_and_more.py.
-- Validation rerun with PostgreSQL and Python 3.14: 146 tests passing.
+- Verified in code: Phase 9 endpoints implemented (snapshots list/refresh, sales by category/table/waiter/vat, buffet branch comparison, cache invalidate).
+- Verified migration added: reports/migrations/0001_initial.py.
+- Validation rerun with PostgreSQL and Python 3.14: 151 tests passing.
 - Known local environment issue: Python 3.11 is incompatible with pinned Django 6.0.4.
-- Next implementation priority: Phase 9 reporting.
+- Next implementation priority: Phase 10 offline sync protocol.

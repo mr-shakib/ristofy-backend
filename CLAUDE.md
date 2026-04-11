@@ -31,7 +31,7 @@ Run server:
 | `billing` | Bill, Payment, Receipt, FiscalTransaction, Refund |
 | `printers` | Printer, PrintJob (Phase 6+) |
 | `inventory` | Ingredient, RecipeComponent, StockMovement, receiving + usage analytics |
-| `reports` | Snapshots, KPIs (Phase 9+) |
+| `reports` | Snapshots, sales aggregations, buffet branch comparison, cache refresh |
 
 ## Implementation Status
 
@@ -44,7 +44,8 @@ Run server:
 - **Phase 6** — Complete: fiscal integration API (send-to-fiscal, receipt actions, z-report, bridge fiscal ack)
 - **Phase 7** — Complete: inventory core + recipe mapping + receiving flow + usage analytics + fire-flow auto-deduction
 - **Phase 8** — Complete: takeaway lifecycle + packaging/extra fees + customer loyalty profile/visits/eligibility
-- **Phase 9** — Next: reporting and KPI snapshots
+- **Phase 9** — Complete: daily snapshots + sales dimensions + buffet branch comparison + cache refresh
+- **Phase 10** — Next: offline sync protocol
 
 ## Coding Conventions
 
@@ -128,11 +129,10 @@ Run a specific app: `./venv/bin/python manage.py test orders`
 - Default project `.venv` is Python 3.11, while pinned `Django==6.0.4` requires Python 3.12+
 - PrintJob transport is still pending; jobs are queued but not yet delivered through real bridge/device integration
 
-## Next Phase Plan (Phase 9)
+## Next Phase Plan (Phase 10)
 See `docs/session-handoff.md` §5 for current implementation priority.
 
 Targets for next implementation slice:
-- Daily report snapshots
-- Sales reports by category/table/waiter/VAT
-- Buffet + branch comparison reports
-- Report caching and refresh strategy
+- Device registration and heartbeat endpoints
+- Push and pull delta sync APIs
+- Conflict resolution and replay safeguards
