@@ -188,6 +188,17 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_THROTTLE_CLASSES': [
+        'core.throttles.BurstRateThrottle',
+        'core.throttles.SustainedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'auth_login': os.getenv('THROTTLE_AUTH_LOGIN', '10/minute'),
+        'pin_login': os.getenv('THROTTLE_PIN_LOGIN', '10/minute'),
+        'burst': os.getenv('THROTTLE_BURST', '120/minute'),
+        'sustained': os.getenv('THROTTLE_SUSTAINED', '5000/day'),
+    },
+    'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
 }
 
 SIMPLE_JWT = {
@@ -199,6 +210,64 @@ SIMPLE_JWT = {
 }
 
 AUTH_USER_MODEL = 'users.User'
+
+# ---------------------------------------------------------------------------
+# Logging — structured JSON in production, human-readable in development
+# ---------------------------------------------------------------------------
+
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'DEBUG' if DEBUG else 'INFO')
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] {levelname} {name} {message}',
+            'style': '{',
+        },
+        'json': {
+            '()': 'logging.Formatter',
+            'fmt': '{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}',
+        },
+    },
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'json' if not DEBUG else 'verbose',
+        },
+        'mail_admins': {
+            'level': 'ERROR',
+            'class': 'django.utils.log.AdminEmailHandler',
+            'filters': ['require_debug_false'],
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': LOG_LEVEL,
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'WARNING'),
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console', 'mail_admins'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'ristofy': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+    },
+}
 
 if not DEBUG:
     SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', default=True)

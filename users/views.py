@@ -10,6 +10,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from core.throttles import AuthLoginRateThrottle, PinLoginRateThrottle
+
 from .audit import log_activity
 from .models import ActivityLog, UserPinCredential, UserSession
 from .permissions import IsOwnerOrManager
@@ -43,6 +45,7 @@ def _issue_tokens_and_session(*, user, request):
 
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthLoginRateThrottle]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -69,6 +72,7 @@ class LoginView(APIView):
 
 class PinLoginView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [PinLoginRateThrottle]
 
     def post(self, request):
         serializer = PinLoginSerializer(data=request.data)

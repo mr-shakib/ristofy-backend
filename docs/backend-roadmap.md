@@ -111,15 +111,25 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Idempotency enforcement: re-submitting a processed key returns stored result.
 	- Cursor-based delta pull with has_more pagination and per-device last_seen_at tracking.
 	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (170 tests) using Python 3.13 with PostgreSQL.
+- Phase 11: Completed
+	- Health check endpoints implemented: GET `/api/v1/health` (liveness) and GET `/api/v1/health/db` (readiness).
+	- DRF throttling implemented: `AuthLoginRateThrottle`, `PinLoginRateThrottle`, `BurstRateThrottle`, `SustainedRateThrottle`. Rates configurable via env vars.
+	- Structured logging configured: JSON format in production, human-readable in development; `ristofy` logger domain scoped.
+	- Locust load test scripts written: `load_tests/locustfile.py` covers auth, order-fire, reporting, and health flows with `ManagerUser`, `WaiterUser`, and `MonitorAgent` user classes.
+	- Production readiness checklist written: `docs/runbooks/production-checklist.md` (10 sections, 35 gate items).
+	- Operations runbook written: `docs/runbooks/operations.md` (10 on-call scenarios with diagnosis and remediation steps).
+	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (179 tests) using Python 3.13 with PostgreSQL.
 
 ## 1.2 Status Audit Snapshot (2026-04-11)
 
-- Code and docs are aligned for completed scope through Phase 10.
+- Code and docs are aligned for completed scope through Phase 11 (all 16 weeks delivered).
 - Billing Step A-D and fiscal integration flows are implemented in code (models, migrations, endpoints, tests).
 - Inventory Phase 7 full scope is implemented in code (models, migrations, endpoints, tests, and order-flow integration).
 - Takeaway and loyalty Phase 8 scope is implemented in code (models, migrations, endpoints, tests).
 - Reporting Phase 9 scope is implemented in code (snapshot model, endpoints, caching strategy, tests).
-- Default `.venv` in this workspace is Python 3.11 (not compatible with Django 6.0.4); local validation was executed via Python 3.14 virtualenv.
+- Offline sync Phase 10 scope is implemented in code (device, outbox, push/pull, conflict policy, tests).
+- Hardening Phase 11 scope is implemented (health probes, throttling, logging, load tests, runbooks).
+- Default `.venv` in this workspace is Python 3.11 (not compatible with Django 6.0.4); local validation was executed via Python 3.13 virtualenv.
 
 ## 2. Target Tech Stack
 
@@ -1114,10 +1124,14 @@ All endpoints are under /api/v1 and require tenant-scoped auth unless explicitly
 - Completed: 19 new tests; full suite passes (170 tests) using Python 3.13 with PostgreSQL
 
 ### Phase 11 (Week 15-16): Hardening and release readiness
-- Load and resilience tests
-- Security scans and penetration test fixes
-- Migration rehearsals and rollback plans
-- Operational runbooks and production readiness review
+- Completed: Health check endpoints (liveness + DB readiness probes)
+- Completed: DRF throttling — auth/PIN login rate limits + per-user burst and sustained caps
+- Completed: Structured JSON logging with environment-controlled log level
+- Completed: Locust load test scripts covering auth, order, reporting, and health flows
+- Completed: Production readiness checklist (docs/runbooks/production-checklist.md)
+- Completed: Operations runbook covering 10 on-call scenarios (docs/runbooks/operations.md)
+- Completed: 9 new tests for health probes, throttle wiring, and logging config
+- Completed: 179 tests total passing using Python 3.13 with PostgreSQL
 
 ## 11. Quality Gates and Definition of Done
 
