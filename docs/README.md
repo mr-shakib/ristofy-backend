@@ -4,6 +4,8 @@ This folder contains living documentation for the backend project.
 
 ## Available Documents
 
+- **Product guide — start here for a full picture of what Ristofy does:**
+  - docs/ristofy-product-guide.md
 - Backend roadmap and implementation phases:
   - docs/backend-roadmap.md
 - API testing and Postman guide with payload and response examples:
