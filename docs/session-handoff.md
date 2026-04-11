@@ -149,6 +149,10 @@ For payloads, see docs/api-postman-guide.md §3.27–3.30.
 
 ### Phase 11 (Completed)
 - **Health check endpoints**: GET `/api/v1/health` (liveness) and GET `/api/v1/health/db` (DB readiness probe).
+- **Swagger/OpenAPI docs**: drf-spectacular enabled with:
+	- GET `/api/schema/`
+	- GET `/api/docs/swagger/`
+	- GET `/api/docs/redoc/`
 - **DRF throttling**: `AuthLoginRateThrottle` on `LoginView`, `PinLoginRateThrottle` on `PinLoginView`, global `BurstRateThrottle` + `SustainedRateThrottle` for authenticated users. All rates env-configurable.
 - **Structured logging**: JSON format in production, verbose in development. `ristofy` logger namespace. `LOG_LEVEL` env override.
 - **Locust load tests**: `load_tests/locustfile.py` with `ManagerUser`, `WaiterUser`, `MonitorAgent` task sets covering auth, order-fire, reporting, and health probe flows.

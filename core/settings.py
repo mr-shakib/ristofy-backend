@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'rest_framework',
+    'drf_spectacular',
     'corsheaders',
     'rest_framework_simplejwt.token_blacklist',
 
@@ -188,6 +189,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_CLASSES': [
         'core.throttles.BurstRateThrottle',
         'core.throttles.SustainedRateThrottle',
@@ -199,6 +201,14 @@ REST_FRAMEWORK = {
         'sustained': os.getenv('THROTTLE_SUSTAINED', '5000/day'),
     },
     'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Ristofy Backend API',
+    'DESCRIPTION': 'OpenAPI schema for Ristofy multi-tenant restaurant backend.',
+    'VERSION': 'v1',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SCHEMA_PATH_PREFIX': r'/api/v1',
 }
 
 SIMPLE_JWT = {

@@ -2489,6 +2489,44 @@ Common Phase 10 errors:
 - 400 when `branch_id` does not belong to the caller's tenant.
 - 401 when no auth token is provided.
 
+## 4.11 API Schema and Interactive Docs (Swagger/ReDoc)
+
+These endpoints are intended for API discovery and frontend contract generation.
+
+### OpenAPI Schema
+
+- Method: GET
+- URL: http://127.0.0.1:8000/api/schema/
+- Auth: No
+
+Response: OpenAPI 3 schema document.
+
+### Swagger UI
+
+- Method: GET
+- URL: http://127.0.0.1:8000/api/docs/swagger/
+- Auth: No
+
+Behavior:
+
+- Interactive API documentation generated from the live schema.
+- Supports Bearer token authorization from the Swagger UI auth panel.
+
+### ReDoc
+
+- Method: GET
+- URL: http://127.0.0.1:8000/api/docs/redoc/
+- Auth: No
+
+Behavior:
+
+- Read-only documentation UI generated from the same schema source.
+
+Common docs errors:
+
+- 500 if schema generation fails due to invalid serializer/view metadata.
+- 404 if docs routes are disabled in deployment routing.
+
 ## 5. Common Troubleshooting
 
 - 401 Unauthorized:

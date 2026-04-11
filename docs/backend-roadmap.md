@@ -113,6 +113,10 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (170 tests) using Python 3.13 with PostgreSQL.
 - Phase 11: Completed
 	- Health check endpoints implemented: GET `/api/v1/health` (liveness) and GET `/api/v1/health/db` (readiness).
+	- OpenAPI schema and interactive API docs implemented with drf-spectacular:
+		- GET `/api/schema/`
+		- GET `/api/docs/swagger/`
+		- GET `/api/docs/redoc/`
 	- DRF throttling implemented: `AuthLoginRateThrottle`, `PinLoginRateThrottle`, `BurstRateThrottle`, `SustainedRateThrottle`. Rates configurable via env vars.
 	- Structured logging configured: JSON format in production, human-readable in development; `ristofy` logger domain scoped.
 	- Locust load test scripts written: `load_tests/locustfile.py` covers auth, order-fire, reporting, and health flows with `ManagerUser`, `WaiterUser`, and `MonitorAgent` user classes.
@@ -134,6 +138,7 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 ## 1.2 Status Audit Snapshot (2026-04-11)
 
 - All 11 phases complete plus production completion pass — every documented endpoint is now implemented.
+- Swagger/OpenAPI docs are now available for machine-readable contract generation and interactive API exploration.
 - No missing models or stub views remain across any app.
 - 179 tests passing with Python 3.13 and PostgreSQL.
 - Default `.venv` in this workspace is Python 3.11 (not compatible with Django 6.0.4); local validation was executed via Python 3.13 virtualenv.
