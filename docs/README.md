@@ -36,6 +36,8 @@ This folder contains living documentation for the backend project.
   - docs/swagger-enable-plan.md
 - Backend deployment guide:
   - docs/backend-deployment-guide.md
+- Free deployment guide (Render + Neon):
+  - docs/deploy-free-render-neon.md
 
 ## Documentation Rules
 
