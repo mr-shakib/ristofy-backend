@@ -2317,6 +2317,178 @@ Common Phase 9 errors:
 - 403 when caller is not OWNER/MANAGER.
 - 400 when `date_to < date_from`.
 
+---
+
+## 4.10 Phase 10 — Offline Sync Protocol
+
+Postman variables to add: `device_uuid`, `device_id`.
+
+### Register Device
+
+- Method: POST
+- URL: {{base_url}}/devices/register
+- Auth: Yes (any authenticated role)
+
+Request body:
+
+```json
+{
+  "device_uuid": "pos-branch1-001",
+  "name": "POS Terminal 1",
+  "device_type": "POS",
+  "app_version": "1.2.0",
+  "branch_id": {{branch_id}}
+}
+```
+
+Success response (201 on first registration, 200 on update):
+
+```json
+{
+  "id": 1,
+  "device_uuid": "pos-branch1-001",
+  "name": "POS Terminal 1",
+  "device_type": "POS",
+  "app_version": "1.2.0",
+  "is_active": true,
+  "registered_at": "2026-04-11T10:00:00Z",
+  "last_seen_at": null
+}
+```
+
+### Device Heartbeat
+
+- Method: POST
+- URL: {{base_url}}/devices/heartbeat
+- Auth: Yes (any authenticated role)
+
+Request body:
+
+```json
+{
+  "device_uuid": "pos-branch1-001",
+  "app_version": "1.2.1"
+}
+```
+
+Success response (200):
+
+```json
+{
+  "device_uuid": "pos-branch1-001",
+  "last_seen_at": "2026-04-11T10:05:00Z",
+  "status": "ok"
+}
+```
+
+### Sync Push
+
+- Method: POST
+- URL: {{base_url}}/sync/push
+- Auth: Yes (any authenticated role)
+
+Request body:
+
+```json
+{
+  "device_uuid": "pos-branch1-001",
+  "items": [
+    {
+      "idempotency_key": "device-001-order-99-v1",
+      "entity_type": "order",
+      "entity_id": "99",
+      "device_updated_at": "2026-04-11T09:55:00Z",
+      "payload": {
+        "note": "extra napkins",
+        "status": "OPEN"
+      }
+    }
+  ]
+}
+```
+
+Success response (200):
+
+```json
+{
+  "device_uuid": "pos-branch1-001",
+  "results": [
+    {
+      "idempotency_key": "device-001-order-99-v1",
+      "entity_type": "order",
+      "entity_id": "99",
+      "status": "ACCEPTED",
+      "conflict_detail": ""
+    }
+  ]
+}
+```
+
+Conflict response (status field = "CONFLICT"):
+
+```json
+{
+  "device_uuid": "pos-branch1-001",
+  "results": [
+    {
+      "idempotency_key": "device-001-order-99-v1",
+      "entity_type": "order",
+      "entity_id": "99",
+      "status": "CONFLICT",
+      "conflict_detail": "Server version updated at 2026-04-11T10:00:00Z is newer than device version at 2026-04-11T09:55:00Z."
+    }
+  ]
+}
+```
+
+Conflict policy: server timestamp always wins. Re-submitting the same `idempotency_key` returns the stored result without re-processing.
+
+### Sync Pull
+
+- Method: POST
+- URL: {{base_url}}/sync/pull
+- Auth: Yes (any authenticated role)
+
+Request body:
+
+```json
+{
+  "device_uuid": "pos-branch1-001",
+  "cursor": 0,
+  "branch_id": {{branch_id}},
+  "limit": 100
+}
+```
+
+Success response (200):
+
+```json
+{
+  "device_uuid": "pos-branch1-001",
+  "cursor": 0,
+  "next_cursor": 42,
+  "has_more": false,
+  "events": [
+    {
+      "id": 1,
+      "entity_type": "order",
+      "entity_id": "10",
+      "event_type": "created",
+      "payload_json": {"order_no": 10},
+      "created_at": "2026-04-11T10:01:00Z"
+    }
+  ]
+}
+```
+
+Cursor usage: on next pull, pass `next_cursor` as `cursor` to receive only new events.
+
+Common Phase 10 errors:
+
+- 400 when `device_uuid` is not registered or belongs to a different tenant.
+- 400 when `branch_id` does not belong to the caller's tenant.
+- 401 when no auth token is provided.
+
 ## 5. Common Troubleshooting
 
 - 401 Unauthorized:

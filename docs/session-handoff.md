@@ -1,6 +1,6 @@
 # Session Handoff (Low-Token Starter)
 
-Last updated: 2026-04-11
+Last updated: 2026-04-11 (Phase 10 complete)
 
 ## 1) What Is Done
 
@@ -92,6 +92,20 @@ See docs/backend-roadmap.md for full detail. Summary:
 - **Role boundary enforcement** validated (OWNER/MANAGER allowed, WAITER denied).
 - **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test reports`, and full `manage.py test` passed (151 tests total) using Python 3.14 with PostgreSQL.
 
+### Phase 10 (Completed)
+- **Device model** implemented: device_uuid, name, device_type, app_version, branch, tenant, is_active, last_seen_at.
+- **OutboxEvent model** implemented: append-only server event log; clients pull events by `id` cursor.
+- **SyncPushRecord model** implemented: idempotency key, conflict status, device_updated_at vs server_entity_updated_at audit.
+- **Sync API implemented**:
+	- POST `/api/v1/devices/register` — register or upsert a device (any authenticated role)
+	- POST `/api/v1/devices/heartbeat` — update last_seen_at (any authenticated role)
+	- POST `/api/v1/sync/push` — push local changes; server-wins conflict policy; per-item idempotency
+	- POST `/api/v1/sync/pull` — pull OutboxEvents since cursor; has_more + next_cursor pagination
+- **Conflict policy**: server timestamp always wins; if `server_entity_updated_at > device_updated_at`, item receives `CONFLICT` status and push is not applied.
+- **Idempotency**: re-submitting a previously processed `idempotency_key` returns the stored result without re-processing.
+- **19 new tests** covering registration, upsert, heartbeat cross-tenant isolation, push accept/conflict/idempotency, pull cursor, has_more, and tenant isolation.
+- **Validation run complete**: `manage.py check`, `makemigrations --check --dry-run`, `manage.py test sync`, and full `manage.py test` passed (170 tests total) using Python 3.13 with PostgreSQL.
+
 ## 2) New Migrations
 
 - orders/migrations/0005_buffetplan_buffetsession_wastelog_buffetround.py
@@ -102,6 +116,7 @@ See docs/backend-roadmap.md for full detail. Summary:
 - inventory/migrations/0002_alter_stockmovement_movement_type_recipecomponent.py
 - orders/migrations/0006_customer_order_customer_customervisit_loyaltyrule_and_more.py
 - reports/migrations/0001_initial.py
+- sync/migrations/0001_initial.py
 
 ## 3) Phase 4 API Surface
 
@@ -125,15 +140,18 @@ For payloads, see docs/api-postman-guide.md §3.27–3.30.
 - Fiscal integration currently uses simulated completion flow (no real device/bridge transport yet).
 - Default project `.venv` is Python 3.11 (incompatible with pinned Django 6.0.4); local validation was executed using a Python 3.14 virtualenv.
 
-## 5) Where To Start Next (Phase 10)
+## 5) Where To Start Next (Phase 11)
 
-### Phase 9: Completed
-- Reporting scope delivered in production-grade shape.
+### Phase 10: Completed
+- Offline sync protocol delivered in production-grade shape.
+- Device registration, heartbeat, push (with idempotency + conflict), pull (cursor + pagination).
+- 170 tests total passing.
 
-### Next Priority (Phase 10 — Offline sync protocol)
-- Device registration and heartbeat
-- Push and pull delta sync endpoints
-- Conflict resolution and replay safety
+### Next Priority (Phase 11 — Hardening and release readiness)
+- Load and resilience testing (k6 or Locust scripts for key endpoints)
+- Security scans and penetration test fixes
+- Migration rehearsals and rollback plans
+- Operational runbooks and production readiness review
 
 ## 6) Next Session Quick Commands
 
@@ -153,7 +171,7 @@ Note: the default `.venv` is Python 3.11 and incompatible with pinned Django 6.0
 
 ## 7) Copy-Paste Prompt For Next Session
 
-"Continue from docs/session-handoff.md. Phase 9 reporting is complete with production-grade endpoints and tests. Start Phase 10 offline sync protocol (device registration, heartbeat, push/pull deltas, conflict policy) with strict tenant isolation, tests, and docs updates."
+"Continue from docs/session-handoff.md. Phase 10 offline sync protocol is complete (device register/heartbeat, push/pull, conflict policy, 170 tests). Start Phase 11 hardening: load testing scripts, security scan fixes, migration rehearsals, and production readiness runbooks."
 
 ## 8) Definition Of Done For Phase 5
 

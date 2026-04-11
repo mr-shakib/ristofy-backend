@@ -100,10 +100,21 @@ This is backend-first documentation. Flutter frontend, Go realtime dispatcher, a
 	- Tenant-scoped report cache and refresh invalidation strategy implemented.
 	- Report app wired into API routing and admin.
 	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (151 tests) using Python 3.14 with PostgreSQL.
+- Phase 10: Completed
+	- Device, OutboxEvent, SyncPushRecord models implemented with tenant/branch isolation.
+	- Sync API implemented:
+		- POST `/api/v1/devices/register`
+		- POST `/api/v1/devices/heartbeat`
+		- POST `/api/v1/sync/push`
+		- POST `/api/v1/sync/pull`
+	- Server-wins conflict resolution with full audit trail per push item.
+	- Idempotency enforcement: re-submitting a processed key returns stored result.
+	- Cursor-based delta pull with has_more pagination and per-device last_seen_at tracking.
+	- Local validation: `manage.py check`, `makemigrations --check --dry-run`, and full test suite passed (170 tests) using Python 3.13 with PostgreSQL.
 
 ## 1.2 Status Audit Snapshot (2026-04-11)
 
-- Code and docs are aligned for completed scope through Phase 9.
+- Code and docs are aligned for completed scope through Phase 10.
 - Billing Step A-D and fiscal integration flows are implemented in code (models, migrations, endpoints, tests).
 - Inventory Phase 7 full scope is implemented in code (models, migrations, endpoints, tests, and order-flow integration).
 - Takeaway and loyalty Phase 8 scope is implemented in code (models, migrations, endpoints, tests).
@@ -1094,9 +1105,13 @@ All endpoints are under /api/v1 and require tenant-scoped auth unless explicitly
 - Completed: tenant-scoped report caching and refresh strategy
 
 ### Phase 10 (Week 14): Offline sync protocol
-- Device registration and heartbeat
-- Push and pull delta sync endpoints
-- Conflict resolution policy and replay safety
+- Completed: Device model with registration and heartbeat endpoints
+- Completed: OutboxEvent append-only event log for delta pull
+- Completed: SyncPushRecord with idempotency and conflict audit
+- Completed: push endpoint with server-wins conflict resolution
+- Completed: pull endpoint with cursor-based delta delivery and has_more pagination
+- Completed: tenant and branch isolation enforced on all sync endpoints
+- Completed: 19 new tests; full suite passes (170 tests) using Python 3.13 with PostgreSQL
 
 ### Phase 11 (Week 15-16): Hardening and release readiness
 - Load and resilience tests

@@ -87,6 +87,7 @@ INSTALLED_APPS = [
     'printers',
     'inventory',
     'reports',
+    'sync',
 ]
 
 MIDDLEWARE = [
